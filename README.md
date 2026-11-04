@@ -1,6 +1,6 @@
 # ELDERFLIX
 
-CloudStream depoları için Netflix tarzı (kendi markasıyla ELDERFLIX) masaüstü web arayüzü.
+CloudStream depoları için ELDERFLIX markalı, sinema akışı görünümünde masaüstü web arayüzü.
 Depo/kanal seçimi, ana sayfa akışları, detay modalı, oynatıcı (HLS + altyazı),
 izlemeye devam et, kısa kodla depo ekleme ve çerçevesiz masaüstü kabuğu içerir.
 
@@ -35,3 +35,15 @@ ISCC.exe desktop/Elderflix.iss
   düz `kod` (py.md / cutt.ly) — boşlukla ayırarak çoklu ekleme yapılabilir.
 - İçerik proxy'si (`/csproxy`) sunucu tarafında çalışır; `resolve=1` parametresi
   kısaltma yönlendirmelerini çözer.
+
+## Yasal Uyarı
+
+ELDERFLIX bağımsız, açık kaynak bir arayüz projesidir. Uygulama, **CloudStream** ekosistemindeki
+topluluk depolarına ve üçüncü taraf eklentilere arayüz sağlar; kendisi hiçbir video içerik
+barındırmaz veya sunmaz.
+
+- Üçüncü taraf depolar, kanallar ve içerikler topluluk tarafından sağlanır; bunların hukuki
+  sorumluluğu sağlayıcılarına aittir. **ELDERFLIX hiçbir üçüncü taraf depo, kanal veya
+  içerikten sorumlu değildir.**
+- Telif hakkı sahiplerinin koşullarına aykırı kullanım kullanıcının kendi sorumluluğundadır.
+- ELDERFLIX, CloudStream veya herhangi bir akış sağlayıcıyla bağlantılı değildir.
