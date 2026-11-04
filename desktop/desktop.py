@@ -48,6 +48,17 @@ def cloudstream_candidates():
     yield os.path.expandvars(r"%LOCALAPPDATA%\Programs\cloudstream\CloudStream.exe")
     yield os.path.expandvars(r"%ProgramFiles%\CloudStream\CloudStream.exe")
     yield os.path.expandvars(r"%LOCALAPPDATA%\CloudStream\CloudStream.exe")
+    # Bilinen köklerde tek seviye ara (MSI kurulum varyantları için)
+    for root in (os.path.expandvars(r"%LOCALAPPDATA%\Programs"),
+                 os.path.expandvars(r"%ProgramFiles%")):
+        try:
+            for name in os.listdir(root):
+                if "cloudstream" in name.lower():
+                    cand = os.path.join(root, name, "CloudStream.exe")
+                    if os.path.exists(cand):
+                        yield cand
+        except OSError:
+            continue
 
 
 def start_bridge() -> str:
