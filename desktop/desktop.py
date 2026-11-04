@@ -62,14 +62,46 @@ def cloudstream_candidates():
 
 
 def start_bridge() -> str:
-    """Köprü ayakta değilse CloudStream'i bulup başlatır; bulunan yolu döner."""
+    """Köprü ayakta değilse sırayla dener:
+    1) Kurulu CloudStream uygulamasını bulup başlat
+    2) Yanımızdaki CloudStream MSI'ını sessizce kur (gerekirse Windows UAC sorar)
+    3) Yanımızdaki CloudStream kurulum .exe'sini çalıştır
+    Bulunan yolu döner; hiçbiri yoksa boş string."""
     if bridge_alive():
         return "running"
+
+    # 1) kurulu uygulama
     for cand in cloudstream_candidates():
         if os.path.exists(cand):
             try:
                 subprocess.Popen([cand], cwd=os.path.dirname(cand), close_fds=True)
                 return cand
+            except Exception:
+                continue
+
+    base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+            else os.path.dirname(os.path.abspath(__file__)))
+
+    # 2) portable paket: yanımızdaki MSI'ı sessiz kur
+    for msi in (os.path.join(base, "CloudStream", "CloudStream-4.8.0.msi"),
+                os.path.join(base, "CloudStream-4.8.0.msi")):
+        if os.path.exists(msi):
+            try:
+                # UAC gerekebilir; Windows gerekli izin isteğini kendisi gösterir
+                subprocess.run(["msiexec", "/i", msi, "/qn", "/norestart"],
+                               timeout=900, check=False)
+                if bridge_alive(timeout=5):
+                    return msi
+            except Exception:
+                continue
+
+    # 3) yanımızdaki kurulum exe'si
+    for exe in (os.path.join(base, "CloudStream", "CloudStream-4.8.0.exe"),
+                os.path.join(base, "CloudStream-4.8.0.exe")):
+        if os.path.exists(exe):
+            try:
+                subprocess.Popen([exe], cwd=os.path.dirname(exe), close_fds=True)
+                return exe
             except Exception:
                 continue
     return ""

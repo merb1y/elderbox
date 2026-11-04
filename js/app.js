@@ -1137,15 +1137,16 @@ function bindBridgeStart(root) {
       return;
     }
     btn.disabled = true;
-    btn.textContent = 'Başlatılıyor… (20-30 sn sürebilir)';
+    btn.textContent = 'Başlatılıyor… (ilk kurulum birkaç dakika sürebilir)';
     toast('CloudStream altyapısı başlatılıyor…');
     try { await window.pywebview.api.start_bridge(); } catch {}
     let ok = await CS.ensureBridge(true);
     let tries = 0;
-    while (!ok && tries < 12) {
-      await new Promise((r) => setTimeout(r, 2500));
+    while (!ok && tries < 60) { // MSI kurulumu 1-2 dk sürebilir
+      await new Promise((r) => setTimeout(r, 3000));
       ok = await CS.ensureBridge(true);
       tries++;
+      if (tries % 5 === 0) btn.textContent = `Kuruluyor… (${tries * 3} sn)`;
     }
     if (ok) {
       toast('CloudStream altyapısı bağlandı ✓');

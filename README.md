@@ -39,12 +39,11 @@ ISCC.exe desktop/Elderbox.iss
 Elderbox arayüzdür; içerikler **CloudStream masaüstü altyapısının** (BridgeServer, 127.0.0.1:8765)
 üzerinden gelir. Altyapı kurulu değilse kanallar "masaüstü altyapısı gerekiyor" der.
 
-1. [Releases](../../releases) sayfasından **Elderbox-Setup.exe** indir ve kur — kurulum sihirbazındaki
-   "CloudStream altyapısını kur" görevi işaretliyken her iki bileşeni de sessizce kurar.
-2. Portable tercih edersen: `Elderbox.exe` + `CloudStream-4.8.0.exe` ayrı indirilir; CloudStream'i
-   bir kez kurup çalıştır (veya `Elderbox.exe` yanına `CloudStream\CloudStream-4.8.0.exe` koy).
-3. Elderbox açılışta altyapıyı otomatik algılar; bağlanmazsa ekrandaki "CloudStream altyapısını
-   başlat" düğmesini kullan.
+1. **Önerilen** — [Releases](../../releases) sayfasından **Elderbox-Setup.exe**: tek kurulum,
+   "CloudStream altyapısını kur" göreviyle her iki bileşeni de sessizce kurar.
+2. **Portable** — **Elderbox-Portable.zip**: zip'i bir klasöre çıkar, `Elderbox.exe`'yi çalıştır.
+   Köprü yoksa Elderbox, yanındaki `CloudStream\CloudStream-4.8.0.msi` dosyasını kendisi kurar
+   (Windows izin sorarsa onayla) veya "CloudStream altyapısını başlat" düğmesini kullanır.
 
 ## Yasal Uyarı
 
