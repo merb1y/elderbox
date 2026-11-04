@@ -34,6 +34,15 @@ ISCC.exe desktop/Elderbox.iss
 - İçerik proxy'si (`/csproxy`) sunucu tarafında çalışır; `resolve=1` parametresi
   kısaltma yönlendirmelerini çözer.
 
+## CloudStream Altyapısı (önemli)
+
+Elderbox arayüzdür; içerikler **CloudStream masaüstü altyapısının** (BridgeServer, 127.0.0.1:8765)
+üzerinden gelir. Altyapı kurulu değilse kanallar "masaüstü altyapısı gerekiyor" der.
+
+1. [Releases](../../releases) sayfasından **CloudStream-4.8.0.exe** uygulamasını indir ve kur/çalıştır.
+2. Elderbox'ı aç — altyapıyı otomatik algılar (yoksa "CloudStream altyapısını başlat" düğmesini kullan).
+3. Elderbox.exe'nin yanına `CloudStream\CloudStream-4.8.0.exe` şeklinde kopyalarsan açılışta otomatik başlatılır.
+
 ## Yasal Uyarı
 
 Elderbox bağımsız, açık kaynak bir arayüz projesidir. Uygulama, **CloudStream** ekosistemindeki

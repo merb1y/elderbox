@@ -20,10 +20,48 @@ Kullanım:
 import importlib.util
 import os
 import socket
+import subprocess
 import sys
 import threading
+import urllib.request
 
 BASE_PORT = 8642
+BRIDGE_HEALTH = "http://127.0.0.1:8765/api/health"
+
+
+def bridge_alive(timeout: float = 2.0) -> bool:
+    """CloudStream BridgeServer (8765) ayakta mı?"""
+    try:
+        with urllib.request.urlopen(BRIDGE_HEALTH, timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def cloudstream_candidates():
+    """CloudStream masaüstü uygulamasının olası konumları."""
+    base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+            else os.path.dirname(os.path.abspath(__file__)))
+    yield os.path.join(base, "CloudStream", "CloudStream-4.8.0.exe")
+    yield os.path.join(base, "CloudStream-4.8.0.exe")
+    yield os.path.expandvars(r"%LOCALAPPDATA%\Programs\CloudStream\CloudStream.exe")
+    yield os.path.expandvars(r"%LOCALAPPDATA%\Programs\cloudstream\CloudStream.exe")
+    yield os.path.expandvars(r"%ProgramFiles%\CloudStream\CloudStream.exe")
+    yield os.path.expandvars(r"%LOCALAPPDATA%\CloudStream\CloudStream.exe")
+
+
+def start_bridge() -> str:
+    """Köprü ayakta değilse CloudStream'i bulup başlatır; bulunan yolu döner."""
+    if bridge_alive():
+        return "running"
+    for cand in cloudstream_candidates():
+        if os.path.exists(cand):
+            try:
+                subprocess.Popen([cand], cwd=os.path.dirname(cand), close_fds=True)
+                return cand
+            except Exception:
+                continue
+    return ""
 
 
 def resource_dir() -> str:
@@ -102,6 +140,13 @@ class WindowApi:
         except Exception:
             pass
 
+    def bridge_status(self) -> bool:
+        return bridge_alive()
+
+    def start_bridge(self) -> str:
+        """Arayüzdeki 'Altyapıyı başlat' düğmesi: CloudStream'i bulup başlat."""
+        return start_bridge()
+
     def close(self) -> None:
         self._win.destroy()
 
@@ -113,6 +158,10 @@ def main() -> None:
     port = pick_port()
     httpd = server.ThreadingHTTPServer(("127.0.0.1", port), server.Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    # Köprü yoksa CloudStream'i arka planda başlatmayı dene (sessiz; bulunamazsa UI rehber verir)
+    if not bridge_alive():
+        threading.Thread(target=start_bridge, daemon=True).start()
 
     import webview
 

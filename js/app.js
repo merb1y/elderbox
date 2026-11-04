@@ -252,13 +252,14 @@ async function renderHome() {
     html += `<div class="backend-note">
       <b>Bu kanal masaüstü altyapısı gerekiyor</b>
       <span>${esc(prov.name)}${prov.__source ? ` (kaynak: ${esc(prov.__source)})` : ''} — kaynak sitesi tarayıcıdan doğrudan
-      erişilemez. CloudStream masaüstü kabuğu bağlandığında bu kanalın içeriği burada görünür.
-      Şimdilik seçicide başka bir kanal deneyebilirsin.</span>
+      erişilemez. CloudStream altyapısı bağlandığında bu kanalın içeriği burada görünür.</span>
+      ${bridgeNoteHtml()}
     </div>`;
   } else if (backendOnly.length && !prov) {
     html += `<div class="backend-note">
       <b>${backendOnly.length} kanal için masaüstü altyapısı gerekiyor:</b>
       <span>${esc(backendOnly.map((p) => p.name).join(', '))}</span>
+      ${bridgeNoteHtml()}
     </div>`;
   }
   if (!visible.length && !backendOnly.length) {
@@ -270,6 +271,7 @@ async function renderHome() {
   }
   rowsEl.innerHTML = html;
   bindCardEvents(rowsEl);
+  bindBridgeStart(rowsEl);
 }
 
 /* Hero: kanaldan rastgele seçilen içeriğin Netflix tarzı banner'ı */
@@ -1109,6 +1111,50 @@ function bindPlayer() {
       return;
     }
     if (e.key === 'Escape' && !$('#modal-overlay').classList.contains('hidden')) closeModal();
+  });
+}
+
+/* ============================================================
+   CLOUDSTREAM KÖPRÜSÜ — eksik altyapıyı başlatma rehberi
+   ============================================================ */
+function bridgeNoteHtml() {
+  if (CS.bridgeOk) return '';
+  return `<div class="bridge-help">
+    <button class="btn-play" id="bridge-start">CloudStream altyapısını başlat</button>
+    <span class="bridge-hint">Kurulu değilse github.com/merb1y/elderbox → Releases altındaki
+    <b>CloudStream-4.8.0.exe</b> uygulamasını indir ve kur. Elderbox, CloudStream açıkken
+    kanalları otomatik olarak ona bağlar.</span>
+  </div>`;
+}
+
+function bindBridgeStart(root) {
+  const btn = $('#bridge-start', root) || document.getElementById('bridge-start');
+  if (!btn || btn.dataset.bound) return;
+  btn.dataset.bound = '1';
+  btn.addEventListener('click', async () => {
+    if (!window.pywebview) {
+      toast("Masaüstü uygulamasında kullanılabilir — tarayıcıda CloudStream uygulamasını elle başlat");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Başlatılıyor… (20-30 sn sürebilir)';
+    toast('CloudStream altyapısı başlatılıyor…');
+    try { await window.pywebview.api.start_bridge(); } catch {}
+    let ok = await CS.ensureBridge(true);
+    let tries = 0;
+    while (!ok && tries < 12) {
+      await new Promise((r) => setTimeout(r, 2500));
+      ok = await CS.ensureBridge(true);
+      tries++;
+    }
+    if (ok) {
+      toast('CloudStream altyapısı bağlandı ✓');
+      renderHome();
+    } else {
+      toast('Bağlanılamadı — CloudStream uygulamasını elle başlatıp tekrar dene');
+      btn.disabled = false;
+      btn.textContent = 'Tekrar dene';
+    }
   });
 }
 
