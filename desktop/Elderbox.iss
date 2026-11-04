@@ -1,20 +1,20 @@
-; ELDERFLIX — Inno Setup kurulum betiği
-; Derleme: ISCC.exe Elderflix.iss
+; Elderbox — Inno Setup kurulum betiği
+; Derleme: ISCC.exe Elderbox.iss
 
-#define MyAppName "ELDERFLIX"
+#define MyAppName "Elderbox"
 #define MyAppVersion "1.0.0"
-#define MyAppExeName "Elderflix.exe"
+#define MyAppExeName "Elderbox.exe"
 
 [Setup]
-AppId={{5B2E9C41-7A6D-4E8F-9C3A-ELDERFLIX100}
+AppId={{C7E4D8F2-91B3-4A5C-8D60-ELDERBOX100}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher=ELDERFLIX
-DefaultDirName={autopf}\Elderflix
+AppPublisher=Elderbox
+DefaultDirName={autopf}\Elderbox
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=installer
-OutputBaseFilename=Elderflix-Setup
+OutputBaseFilename=Elderbox-Setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -26,7 +26,7 @@ SetupIconFile=app.ico
 Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 
 [Files]
-Source: "dist\Elderflix.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\Elderbox.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -40,4 +40,4 @@ Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescript
 Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} uygulamasını başlat"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: files; Name: "{app}\Elderflix.exe"
+Type: files; Name: "{app}\Elderbox.exe"

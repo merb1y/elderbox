@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ELDERFLIX — masaüstü kabuğu.
+Elderbox — masaüstü kabuğu.
 
 Arayüzü ve içerik proxy'sini yerel bir HTTP sunucusu olarak arka planda
 çalıştırır, aynı işlem içinde pywebview (Edge WebView2) penceresi açar.
@@ -13,9 +13,9 @@ olmalı — aksi hâlde her başlangıçta depolar sıfırlanır. Varsayılan po
 8642'dir; meşgulse sıradaki birkaç port denenir.
 
 Kullanım:
-    Elderflix.exe                 → 8642 portunda başlar (meşgulse sıradaki)
-    Elderflix.exe --port 8799     → belirli portta (test/otomasyon için)
-    ELDERFLIX_PORT=8799           → ortam değişkeni ile port
+    Elderbox.exe                 → 8642 portunda başlar (meşgulse sıradaki)
+    Elderbox.exe --port 8799     → belirli portta (test/otomasyon için)
+    Elderbox_PORT=8799           → ortam değişkeni ile port
 """
 import importlib.util
 import os
@@ -36,16 +36,16 @@ def resource_dir() -> str:
 def load_server_module(ui_dir: str):
     """server.py'ı kaynak klasöründen yükle (ROOT doğru hesaplanır)."""
     spec = importlib.util.spec_from_file_location(
-        "elderflix_server", os.path.join(ui_dir, "server.py")
+        "elderbox_server", os.path.join(ui_dir, "server.py")
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["elderflix_server"] = mod
+    sys.modules["elderbox_server"] = mod
     spec.loader.exec_module(mod)
     return mod
 
 
 def pick_port() -> int:
-    """--port / ELDERFLIX_PORT varsa onu, yoksa sabit 8642'den başlayan boş portu seç."""
+    """--port / Elderbox_PORT varsa onu, yoksa sabit 8642'den başlayan boş portu seç."""
     if "--port" in sys.argv:
         i = sys.argv.index("--port")
         if i + 1 < len(sys.argv):
@@ -53,7 +53,7 @@ def pick_port() -> int:
                 return int(sys.argv[i + 1])
             except ValueError:
                 pass
-    env = os.environ.get("ELDERFLIX_PORT")
+    env = os.environ.get("Elderbox_PORT")
     if env and env.isdigit():
         return int(env)
     # Sabit port: localStorage origin'i her açılışta aynı kalsın
@@ -118,7 +118,7 @@ def main() -> None:
 
     api = WindowApi()
     win = webview.create_window(
-        "ELDERFLIX",
+        "Elderbox",
         f"http://127.0.0.1:{port}/",
         width=1400,
         height=820,

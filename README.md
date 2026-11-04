@@ -1,13 +1,12 @@
-# ELDERFLIX
+# Elderbox
 
-CloudStream depoları için ELDERFLIX markalı, sinema akışı görünümünde masaüstü web arayüzü.
+CloudStream depoları için Elderbox markalı, sinema akışı görünümünde masaüstü web arayüzü.
 Depo/kanal seçimi, ana sayfa akışları, detay modalı, oynatıcı (HLS + altyazı),
 izlemeye devam et, kısa kodla depo ekleme ve çerçevesiz masaüstü kabuğu içerir.
 
 ## Çalıştırma (geliştirme)
 
 ```bash
-cd netflix-ui
 python server.py          # http://127.0.0.1:8642
 ```
 
@@ -16,16 +15,15 @@ python server.py          # http://127.0.0.1:8642
 Gereksinimler: Python 3.12+, `pip install pywebview pyinstaller`, [Inno Setup 6](https://jrsoftware.org/isinfo.php)
 
 ```bash
-cd netflix-ui
-python -m PyInstaller --onefile --windowed --name Elderflix --icon desktop/app.ico ^
+python -m PyInstaller --onefile --windowed --name Elderbox --icon desktop/app.ico ^
   --add-data "index.html;ui" --add-data "css;ui/css" --add-data "js;ui/js" ^
   --add-data "assets;ui/assets" --add-data "server.py;ui" ^
   --distpath desktop/dist --workpath desktop/build --specpath desktop desktop/desktop.py
-ISCC.exe desktop/Elderflix.iss
+ISCC.exe desktop/Elderbox.iss
 ```
 
-- `desktop/dist/Elderflix.exe` — taşınabilir tek dosya
-- `desktop/installer/Elderflix-Setup.exe` — Türkçe kurulum sihirbazı
+- `desktop/dist/Elderbox.exe` — taşınabilir tek dosya
+- `desktop/installer/Elderbox-Setup.exe` — Türkçe kurulum sihirbazı
 
 ## Notlar
 
@@ -38,12 +36,12 @@ ISCC.exe desktop/Elderflix.iss
 
 ## Yasal Uyarı
 
-ELDERFLIX bağımsız, açık kaynak bir arayüz projesidir. Uygulama, **CloudStream** ekosistemindeki
+Elderbox bağımsız, açık kaynak bir arayüz projesidir. Uygulama, **CloudStream** ekosistemindeki
 topluluk depolarına ve üçüncü taraf eklentilere arayüz sağlar; kendisi hiçbir video içerik
 barındırmaz veya sunmaz.
 
 - Üçüncü taraf depolar, kanallar ve içerikler topluluk tarafından sağlanır; bunların hukuki
-  sorumluluğu sağlayıcılarına aittir. **ELDERFLIX hiçbir üçüncü taraf depo, kanal veya
+  sorumluluğu sağlayıcılarına aittir. **Elderbox hiçbir üçüncü taraf depo, kanal veya
   içerikten sorumlu değildir.**
 - Telif hakkı sahiplerinin koşullarına aykırı kullanım kullanıcının kendi sorumluluğundadır.
-- ELDERFLIX, CloudStream veya herhangi bir akış sağlayıcıyla bağlantılı değildir.
+- Elderbox, CloudStream veya herhangi bir akış sağlayıcıyla bağlantılı değildir.
