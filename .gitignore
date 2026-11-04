@@ -1,0 +1,11 @@
+# Derleme çıktıları
+desktop/dist/
+desktop/build/
+desktop/*.spec
+installer/
+__pycache__/
+*.pyc
+
+# Günlükler / yerel dosyalar
+*.log
+bridge.log
