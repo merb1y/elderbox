@@ -67,18 +67,54 @@ const CS = (() => {
      zincirini çalıştırır: .cs3 → dex→jar → sağlayıcı → içerik.
      ============================================================ */
   const BRIDGE_URL = 'http://127.0.0.1:8765';
-  let bridgeOk = false;
+  let bridgeOk = true;
+  let bridgeVerified = false;
+  let bridgePromise = null;
 
-  async function ensureBridge(force = false) {
-    if (bridgeOk && !force) return true;
+  async function pingBridge(timeoutMs = 1500) {
     try {
       const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 2000);
+      const t = setTimeout(() => ctl.abort(), timeoutMs);
       const res = await fetch(`${BRIDGE_URL}/api/health`, { signal: ctl.signal });
       clearTimeout(t);
-      bridgeOk = res.ok;
-    } catch { bridgeOk = false; }
-    return bridgeOk;
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function ensureBridge(force = false) {
+    if (bridgeVerified && bridgeOk && !force) return true;
+    if (bridgePromise && !force) return bridgePromise;
+
+    bridgePromise = (async () => {
+      if (await pingBridge(1500)) {
+        bridgeOk = true;
+        bridgeVerified = true;
+        return true;
+      }
+      // Gömülü köprü henüz ısınmamışsa arka planda tetikle ve hazır olana dek bekle
+      try { window.pywebview?.api?.start_bridge?.(); } catch {}
+      fetch('/bridge-start').catch(() => {});
+
+      for (let i = 0; i < 35; i++) {
+        await new Promise((r) => setTimeout(r, 400));
+        if (await pingBridge(1500)) {
+          bridgeOk = true;
+          bridgeVerified = true;
+          return true;
+        }
+      }
+      bridgeOk = false;
+      bridgeVerified = false;
+      return false;
+    })();
+
+    try {
+      return await bridgePromise;
+    } finally {
+      bridgePromise = null;
+    }
   }
 
   const tvTypeToUi = (t) => t || 'Others';
@@ -92,11 +128,32 @@ const CS = (() => {
     return `${name} Altyazı`;
   }
 
+  function resolvePluginMeta(repoUrl, nameHint) {
+    const active = getActiveProvider(repoUrl);
+    if (active && (!nameHint || active.name === nameHint || active.internalName === nameHint)) return active;
+    if (nameHint) {
+      const m = plugins.find((p) =>
+        (!repoUrl || p.repoUrl === repoUrl) &&
+        (p.name === nameHint || p.internalName === nameHint)
+      );
+      if (m) return m;
+    }
+    return active || null;
+  }
+
+  function appendProvParams(params, pMeta, fallbackName = '') {
+    const name = pMeta?.name || fallbackName || '';
+    if (name) params.set('provider', name);
+    if (pMeta?.repoUrl) params.set('repo', pMeta.repoUrl);
+    if (pMeta?.internalName || pMeta?.name) params.set('internal', pMeta.internalName || pMeta.name);
+  }
 
   const restClient = {
     async getHome(repoUrl) {
       const prov = getActiveProvider(repoUrl);
-      const qs = prov ? `?provider=${encodeURIComponent(prov.name)}` : '';
+      const params = new URLSearchParams();
+      if (prov) appendProvParams(params, prov);
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`${BRIDGE_URL}/api/home${qs}`);
       if (!res.ok) throw new Error('köprü: HTTP ' + res.status);
       const data = await res.json();
@@ -113,8 +170,9 @@ const CS = (() => {
     },
     async search(repoUrl, q) {
       const prov = getActiveProvider(repoUrl);
-      const qs = `q=${encodeURIComponent(q)}` + (prov ? `&provider=${encodeURIComponent(prov.name)}` : '');
-      const res = await fetch(`${BRIDGE_URL}/api/search?${qs}`);
+      const params = new URLSearchParams({ q });
+      if (prov) appendProvParams(params, prov);
+      const res = await fetch(`${BRIDGE_URL}/api/search?${params.toString()}`);
       if (!res.ok) throw new Error('köprü: HTTP ' + res.status);
       const data = await res.json();
       return (data.results || []).map((i) => ({
@@ -123,9 +181,10 @@ const CS = (() => {
       }));
     },
     async load(repoUrl, item) {
-      const prov = getActiveProvider(repoUrl);
-      const p = prov ? encodeURIComponent(prov.name) : encodeURIComponent(item.apiName || '');
-      const res = await fetch(`${BRIDGE_URL}/api/load?provider=${p}&url=${encodeURIComponent(item.url)}`);
+      const pMeta = resolvePluginMeta(repoUrl, item.apiName);
+      const params = new URLSearchParams({ url: item.url });
+      appendProvParams(params, pMeta, item.apiName);
+      const res = await fetch(`${BRIDGE_URL}/api/load?${params.toString()}`);
       if (!res.ok) throw new Error('köprü: HTTP ' + res.status);
       const d = await res.json();
       return {
@@ -139,9 +198,10 @@ const CS = (() => {
       };
     },
     async links(repoUrl, data) {
-      const prov = getActiveProvider(repoUrl);
-      const p = prov ? encodeURIComponent(prov.name) : encodeURIComponent('');
-      const res = await fetch(`${BRIDGE_URL}/api/links?provider=${p}&data=${encodeURIComponent(data)}`);
+      const pMeta = resolvePluginMeta(repoUrl);
+      const params = new URLSearchParams({ data });
+      appendProvParams(params, pMeta);
+      const res = await fetch(`${BRIDGE_URL}/api/links?${params.toString()}`);
       if (!res.ok) throw new Error('köprü: HTTP ' + res.status);
       const j = await res.json();
       // Altyazıları da link listesine kat (CloudStream subtitle mantığı)
@@ -297,7 +357,7 @@ const CS = (() => {
     }
     savePlugins();
     // Köprü bağlıysa depoyu JVM tarafına da kur (gerçek PluginManager)
-    if (bridgeOk) {
+    if (await ensureBridge()) {
       try {
         await fetch(`${BRIDGE_URL}/api/addrepo?repo=${encodeURIComponent(url)}`);
       } catch { /* köprü hatası kritik değil */ }
@@ -309,8 +369,7 @@ const CS = (() => {
   async function installPlugin(key) {
     const p = plugins.find((x) => x.__key === key);
     if (!p) throw new Error('eklenti bulunamadı');
-    const dt = desktop();
-    if (bridgeOk) {
+    if (await ensureBridge()) {
       const res = await fetch(`${BRIDGE_URL}/api/install?repo=${encodeURIComponent(p.repoUrl)}&internal=${encodeURIComponent(p.internalName || p.name)}`);
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
@@ -325,7 +384,7 @@ const CS = (() => {
   async function uninstallPlugin(key) {
     const p = plugins.find((x) => x.__key === key);
     if (!p) return;
-    if (bridgeOk) {
+    if (await ensureBridge()) {
       await fetch(`${BRIDGE_URL}/api/uninstall?internal=${encodeURIComponent(p.internalName || p.name)}`).catch(() => {});
     }
     p.installed = false;

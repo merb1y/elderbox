@@ -1,6 +1,8 @@
 # Derleme çıktıları
 desktop/dist/
 desktop/build/
+desktop/cs-bridge/
+desktop/installer/
 desktop/*.spec
 installer/
 __pycache__/

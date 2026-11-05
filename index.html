@@ -6,8 +6,8 @@
 <title>Elderbox</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" defer></script>
 <link rel="icon" type="image/png" href="assets/img/favicon.png">
-<link rel="stylesheet" href="css/style.css?v=21">
-<script>window.__ASSET_V = 21;</script>
+<link rel="stylesheet" href="css/style.css?v=23">
+<script>window.__ASSET_V = 23;</script>
 </head>
 <body>
 
@@ -129,11 +129,22 @@
               </div>
               <div class="set-card">
                 <div class="set-row">
-                  <div><b>Dublaj / Altyazı tercihi</b><p>Birden fazla varyant varsa varsayılan seçim.</p></div>
+                  <div><b>Ses tercihi</b><p>Birden fazla ses varyantı varsa (dublaj/orijinal) varsayılan seçim.</p></div>
                   <select class="set-select" id="nf-pref-audio">
                     <option value="Tümü">Ne bulunursa</option>
                     <option value="Dublaj">Dublaj öncelikli</option>
-                    <option value="Altyazı">Altyazı öncelikli</option>
+                    <option value="Altyazı">Orijinal ses öncelikli</option>
+                  </select>
+                </div>
+              </div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div><b>Altyazı tercihi</b><p>Başlatılan içerikte bu dilde altyazı varsa otomatik açılır.</p></div>
+                  <select class="set-select" id="nf-pref-sub">
+                    <option value="yok">Otomatik seçme</option>
+                    <option value="tr">Türkçe</option>
+                    <option value="en">İngilizce</option>
+                    <option value="tr,en">Türkçe + İngilizce</option>
                   </select>
                 </div>
               </div>
@@ -158,7 +169,7 @@
             <section class="set-panel" data-panel="engine">
               <h3 class="set-sec">CloudStream Altyapısı</h3>
               <p class="set-desc">İçerikler kurulu depolardaki sağlayıcılar üzerinden gelir. Altyapı durumu:
-                <span id="cs-engine-badge" class="cs-engine-badge">Web köprüsü</span></p>
+                <span id="cs-engine-badge" class="cs-engine-badge">Gömülü CloudStream altyapısı bağlı — 127.0.0.1:8765</span></p>
               <div class="set-card">
                 <div class="set-row">
                   <div>
@@ -291,8 +302,8 @@
 <div class="win-resize" id="win-resize-s"></div>
 <div class="win-resize" id="win-resize-se"></div>
 
-<script src="js/data.js?v=21"></script>
-<script src="js/cs-bridge.js?v=21"></script>
-<script src="js/app.js?v=21"></script>
+<script src="js/data.js?v=23"></script>
+<script src="js/cs-bridge.js?v=23"></script>
+<script src="js/app.js?v=23"></script>
 </body>
 </html>

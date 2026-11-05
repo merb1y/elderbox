@@ -3,33 +3,31 @@
 Elderbox — masaüstü kabuğu.
 
 Arayüzü ve içerik proxy'sini yerel bir HTTP sunucusu olarak arka planda
-çalıştırır, aynı işlem içinde pywebview (Edge WebView2) penceresi açar.
-Pencere çerçevesizdir; küçültme, büyütme ve kapatma düğmelerinin kendisi
-arayüzün navbar'ındadır (window.pywebview.api üzerinden buraya bağlanır).
-
-Kalıcılık: depolar/kanallar/geçmiş localStorage'da tutulur ve localStorage
-origin'e (protokol+host+port) bağlıdır. Bu yüzden port HER AÇILIŞTA AYNI
-olmalı — aksi hâlde her başlangıçta depolar sıfırlanır. Varsayılan port
-8642'dir; meşgulse sıradaki birkaç port denenir.
-
-Kullanım:
-    Elderbox.exe                 → 8642 portunda başlar (meşgulse sıradaki)
-    Elderbox.exe --port 8799     → belirli portta (test/otomasyon için)
-    Elderbox_PORT=8799           → ortam değişkeni ile port
+çalıştırır, gömülü CloudStream altyapısını (BridgeServer, 127.0.0.1:8765)
+otomatik olarak başlatır ve aynı işlem içinde pywebview (Edge WebView2)
+penceresi açar.
 """
+import atexit
 import importlib.util
 import os
+import shutil
 import socket
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
+import zipfile
 
 BASE_PORT = 8642
 BRIDGE_HEALTH = "http://127.0.0.1:8765/api/health"
+BRIDGE_CACHE_VERSION = "v2"
+
+_BRIDGE_LOCK = threading.Lock()
+_BRIDGE_PROC = None
 
 
-def bridge_alive(timeout: float = 2.0) -> bool:
+def bridge_alive(timeout: float = 1.5) -> bool:
     """CloudStream BridgeServer (8765) ayakta mı?"""
     try:
         with urllib.request.urlopen(BRIDGE_HEALTH, timeout=timeout) as r:
@@ -38,80 +36,143 @@ def bridge_alive(timeout: float = 2.0) -> bool:
         return False
 
 
-def cloudstream_candidates():
-    """CloudStream masaüstü uygulamasının olası konumları."""
-    base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
-            else os.path.dirname(os.path.abspath(__file__)))
-    yield os.path.join(base, "CloudStream", "CloudStream-4.8.0.exe")
-    yield os.path.join(base, "CloudStream-4.8.0.exe")
-    yield os.path.expandvars(r"%LOCALAPPDATA%\Programs\CloudStream\CloudStream.exe")
-    yield os.path.expandvars(r"%LOCALAPPDATA%\Programs\cloudstream\CloudStream.exe")
-    yield os.path.expandvars(r"%ProgramFiles%\CloudStream\CloudStream.exe")
-    yield os.path.expandvars(r"%LOCALAPPDATA%\CloudStream\CloudStream.exe")
-    # Bilinen köklerde tek seviye ara (MSI kurulum varyantları için)
-    for root in (os.path.expandvars(r"%LOCALAPPDATA%\Programs"),
-                 os.path.expandvars(r"%ProgramFiles%")):
-        try:
-            for name in os.listdir(root):
-                if "cloudstream" in name.lower():
-                    cand = os.path.join(root, name, "CloudStream.exe")
-                    if os.path.exists(cand):
-                        yield cand
-        except OSError:
-            continue
+def _is_valid_bridge_dir(path: str) -> bool:
+    if not path or not os.path.isdir(path):
+        return False
+    java_exe = os.path.join(path, "jre", "bin", "java.exe")
+    lib_dir = os.path.join(path, "lib")
+    return os.path.isfile(java_exe) and os.path.isdir(lib_dir)
 
 
-def start_bridge() -> str:
-    """Köprü ayakta değilse sırayla dener:
-    1) Kurulu CloudStream uygulamasını bulup başlat
-    2) Yanımızdaki CloudStream MSI'ını sessizce kur (gerekirse Windows UAC sorar)
-    3) Yanımızdaki CloudStream kurulum .exe'sini çalıştır
-    Bulunan yolu döner; hiçbiri yoksa boş string."""
+def _locate_or_extract_bridge() -> str:
+    """Gömülü cs-bridge klasörünü bulur; tek-dosya .exe içinde zip olarak
+    paketlenmişse ilk çalışmada %LOCALAPPDATA%\\Elderbox altına çıkarır."""
+    exe_dir = (
+        os.path.dirname(sys.executable)
+        if getattr(sys, "frozen", False)
+        else os.path.dirname(os.path.abspath(__file__))
+    )
+    meipass = getattr(sys, "_MEIPASS", None)
+
+    # 1) Doğrudan klasör adayları (Setup kurulumu, Portable klasörü veya geliştirme ortamı)
+    candidates = [
+        os.path.join(exe_dir, "cs-bridge"),
+        os.path.join(os.path.dirname(exe_dir), "cs-bridge"),
+        os.path.join(exe_dir, "desktop", "cs-bridge"),
+    ]
+    if meipass:
+        candidates.append(os.path.join(meipass, "cs-bridge"))
+
+    for cand in candidates:
+        if _is_valid_bridge_dir(cand):
+            return cand
+
+    # 2) Tek-dosya Elderbox.exe içinde gömülü cs-bridge.zip → %LOCALAPPDATA%\Elderbox\cs-bridge-v2
+    local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    cache_dir = os.path.join(local_app_data, "Elderbox", f"cs-bridge-{BRIDGE_CACHE_VERSION}")
+    ready_flag = os.path.join(cache_dir, ".ready")
+    if os.path.isfile(ready_flag) and _is_valid_bridge_dir(cache_dir):
+        return cache_dir
+
+    zip_candidates = []
+    if meipass:
+        zip_candidates.append(os.path.join(meipass, "cs-bridge.zip"))
+    zip_candidates.extend([
+        os.path.join(exe_dir, "cs-bridge.zip"),
+        os.path.join(exe_dir, "desktop", "cs-bridge.zip"),
+    ])
+
+    for zpath in zip_candidates:
+        if os.path.isfile(zpath):
+            try:
+                if os.path.isdir(cache_dir):
+                    shutil.rmtree(cache_dir, ignore_errors=True)
+                os.makedirs(cache_dir, exist_ok=True)
+                with zipfile.ZipFile(zpath, "r") as zf:
+                    zf.extractall(cache_dir)
+                if _is_valid_bridge_dir(cache_dir):
+                    with open(ready_flag, "w", encoding="utf-8") as f:
+                        f.write("ok")
+                    return cache_dir
+            except Exception:
+                continue
+
+    return ""
+
+
+def start_bridge(wait_seconds: float = 6.0) -> str:
+    """Gömülü CloudStream BridgeServer'ı arka planda sessizce başlatır."""
+    global _BRIDGE_PROC
     if bridge_alive():
         return "running"
 
-    # 1) kurulu uygulama
-    for cand in cloudstream_candidates():
-        if os.path.exists(cand):
-            try:
-                subprocess.Popen([cand], cwd=os.path.dirname(cand), close_fds=True)
-                return cand
-            except Exception:
-                continue
+    with _BRIDGE_LOCK:
+        if bridge_alive():
+            return "running"
 
-    base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
-            else os.path.dirname(os.path.abspath(__file__)))
+        bridge_dir = _locate_or_extract_bridge()
+        if not bridge_dir:
+            return ""
 
-    # 2) portable paket: yanımızdaki MSI'ı sessiz kur
-    for msi in (os.path.join(base, "CloudStream", "CloudStream-4.8.0.msi"),
-                os.path.join(base, "CloudStream-4.8.0.msi")):
-        if os.path.exists(msi):
-            try:
-                # UAC gerekebilir; Windows gerekli izin isteğini kendisi gösterir
-                subprocess.run(["msiexec", "/i", msi, "/qn", "/norestart"],
-                               timeout=900, check=False)
-                if bridge_alive(timeout=5):
-                    return msi
-            except Exception:
-                continue
+        javaw = os.path.join(bridge_dir, "jre", "bin", "javaw.exe")
+        java = javaw if os.path.isfile(javaw) else os.path.join(bridge_dir, "jre", "bin", "java.exe")
+        lib_glob = os.path.join(bridge_dir, "lib", "*")
 
-    # 3) yanımızdaki kurulum exe'si
-    for exe in (os.path.join(base, "CloudStream", "CloudStream-4.8.0.exe"),
-                os.path.join(base, "CloudStream-4.8.0.exe")):
-        if os.path.exists(exe):
-            try:
-                subprocess.Popen([exe], cwd=os.path.dirname(exe), close_fds=True)
-                return exe
-            except Exception:
-                continue
-    return ""
+        cmd = [
+            java,
+            "-XX:+UnlockDiagnosticVMOptions",
+            "-XX:-BytecodeVerificationRemote",
+            "-Xmx1G",
+            "-cp",
+            lib_glob,
+            "com.lagradost.cloudstream4.BridgeServerKt",
+        ]
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
+        try:
+            _BRIDGE_PROC = subprocess.Popen(
+                cmd,
+                cwd=bridge_dir,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=flags,
+                close_fds=True,
+            )
+        except Exception:
+            return ""
+
+    deadline = time.time() + max(0.0, wait_seconds)
+    while time.time() < deadline:
+        if bridge_alive(timeout=0.5):
+            return bridge_dir
+        time.sleep(0.15)
+    return bridge_dir
+
+
+def stop_bridge() -> None:
+    """Uygulama kapanırken kendi başlattığımız köprü sürecini sonlandır."""
+    global _BRIDGE_PROC
+    proc = _BRIDGE_PROC
+    _BRIDGE_PROC = None
+    if proc is not None:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+
+atexit.register(stop_bridge)
 
 
 def resource_dir() -> str:
     """Arayüz dosyalarının (index.html, css, js, assets) olduğu klasör."""
     if getattr(sys, "frozen", False):  # PyInstaller paketi
         return os.path.join(sys._MEIPASS, "ui")
-    return os.path.dirname(os.path.abspath(__file__))
+    # Geliştirme ortamında desktop/ klasörünün bir üstü
+    here = os.path.dirname(os.path.abspath(__file__))
+    if os.path.isfile(os.path.join(here, "index.html")):
+        return here
+    return os.path.dirname(here)
 
 
 def load_server_module(ui_dir: str):
@@ -145,7 +206,7 @@ def pick_port() -> int:
             return p
         except OSError:
             continue
-    return BASE_PORT  # son çare — bu porta bağlanmayı dener
+    return BASE_PORT
 
 
 class WindowApi:
@@ -187,10 +248,11 @@ class WindowApi:
         return bridge_alive()
 
     def start_bridge(self) -> str:
-        """Arayüzdeki 'Altyapıyı başlat' düğmesi: CloudStream'i bulup başlat."""
-        return start_bridge()
+        """Gömülü CloudStream altyapısını başlat."""
+        return start_bridge(wait_seconds=8.0)
 
     def close(self) -> None:
+        stop_bridge()
         self._win.destroy()
 
 
@@ -202,9 +264,12 @@ def main() -> None:
     httpd = server.ThreadingHTTPServer(("127.0.0.1", port), server.Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
-    # Köprü yoksa CloudStream'i arka planda başlatmayı dene (sessiz; bulunamazsa UI rehber verir)
-    if not bridge_alive():
-        threading.Thread(target=start_bridge, daemon=True).start()
+    # Gömülü CloudStream altyapısını başlat; pencere açılmadan önce
+    # köprünün dinlemeye geçmesi için kısa süre bekle (genelde ~1 sn sürer)
+    if not bridge_alive(timeout=0.4):
+        t = threading.Thread(target=start_bridge, kwargs={"wait_seconds": 15.0}, daemon=True)
+        t.start()
+        t.join(timeout=2.5)
 
     import webview
 
@@ -224,6 +289,7 @@ def main() -> None:
     try:
         webview.start()
     finally:
+        stop_bridge()
         httpd.shutdown()
 
 

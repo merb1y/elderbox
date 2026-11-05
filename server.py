@@ -1,20 +1,80 @@
 # -*- coding: utf-8 -*-
 """
-Geliştirme köprü sunucusu — arayüz + sunucu-taraflı içerik proxy'si.
+Köprü sunucusu — arayüz + sunucu-taraflı içerik proxy'si + gömülü CloudStream başlatıcı.
 
-Statik dosyaları sunar ve /csproxy üzerinden sağlayıcı sitelerini
-sunucu tarafından çeker (tarayıcı CORS engeline takılmaz). Masaüstü
-altyapısı (JVM backend) bağlandığında bu proxy'nin yerini
-window.CloudStreamDesktop köprüsü alır.
+Statik dosyaları sunar, /csproxy üzerinden sağlayıcı akışlarını ve kısaltma
+adreslerini çözer, /bridge-start ucuyla gömülü CloudStream (BridgeServer)
+altyapısını otomatik olarak ayağa kaldırır.
 """
-import urllib.request
-import urllib.parse
 import os
+import subprocess
 import sys
-from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+import threading
+import time
+import urllib.parse
+import urllib.request
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+BRIDGE_HEALTH = "http://127.0.0.1:8765/api/health"
+_SRV_BRIDGE_LOCK = threading.Lock()
+
+
+def _bridge_alive(timeout: float = 1.0) -> bool:
+    try:
+        with urllib.request.urlopen(BRIDGE_HEALTH, timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def ensure_local_bridge() -> bool:
+    """Port 8765 kapalıysa yanımızdaki gömülü cs-bridge paketini başlatır."""
+    if _bridge_alive():
+        return True
+    with _SRV_BRIDGE_LOCK:
+        if _bridge_alive():
+            return True
+        candidates = [
+            os.path.join(ROOT, "desktop", "cs-bridge"),
+            os.path.join(os.path.dirname(ROOT), "cs-bridge"),
+            os.path.join(os.path.dirname(ROOT), "cs-desktop-src", "desktopApp", "build", "bridge-dist"),
+            os.path.join(os.environ.get("LOCALAPPDATA") or "", "Elderbox", "cs-bridge-v2"),
+        ]
+        for bdir in candidates:
+            java_exe = os.path.join(bdir, "jre", "bin", "javaw.exe")
+            if not os.path.isfile(java_exe):
+                java_exe = os.path.join(bdir, "jre", "bin", "java.exe")
+            lib_dir = os.path.join(bdir, "lib")
+            if os.path.isfile(java_exe) and os.path.isdir(lib_dir):
+                flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
+                try:
+                    subprocess.Popen(
+                        [
+                            java_exe,
+                            "-XX:+UnlockDiagnosticVMOptions",
+                            "-XX:-BytecodeVerificationRemote",
+                            "-Xmx1G",
+                            "-cp",
+                            os.path.join(lib_dir, "*"),
+                            "com.lagradost.cloudstream4.BridgeServerKt",
+                        ],
+                        cwd=bdir,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=flags,
+                        close_fds=True,
+                    )
+                    for _ in range(25):
+                        if _bridge_alive(0.4):
+                            return True
+                        time.sleep(0.2)
+                    return True
+                except Exception:
+                    continue
+    return _bridge_alive()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -24,7 +84,6 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("[srv] %s\n" % (fmt % args))
 
-    # CORS: aynı kaynak üzerinden çalışıyoruz, yine de açıklayıcı başlıklar
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
@@ -33,6 +92,10 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/csproxy":
             self._proxy(parsed)
+            return
+        if parsed.path == "/bridge-start":
+            ok = ensure_local_bridge()
+            self._json(200, {"ok": ok})
             return
         if parsed.path == "/health":
             body = b'{"ok":true,"bridge":"dev"}'
@@ -114,5 +177,6 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8642
+    threading.Thread(target=ensure_local_bridge, daemon=True).start()
     print(f"köprü sunucusu: http://localhost:{port}  (proxy: /csproxy?url=...)")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

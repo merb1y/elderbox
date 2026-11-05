@@ -80,7 +80,7 @@ function renderRepoPicker() {
         <button class="rp-item ${prov && prov.__key === p.__key ? 'active' : ''}" data-prov="${esc(p.__key)}">
           ${p.iconUrl ? `<img src="${esc(p.iconUrl.replace('%size%', '64'))}" alt="" onerror="this.outerHTML='<span class=&quot;rp-mini&quot;>${esc((p.name || 'K')[0])}</span>'">` : `<span class="rp-mini">${esc((p.name || 'K')[0])}</span>`}
           <span class="rp-item-name">${esc(p.name)}</span>
-          ${CS.hasAdapter(p) ? '<span class="cs-badge s-ok">canlı</span>' : '<span class="cs-badge s-slow">masaüstü</span>'}
+          <span class="cs-badge s-ok">canlı</span>
           ${prov && prov.__key === p.__key ? '<span class="rp-check">✓</span>' : ''}
         </button>`).join('')}
       <button class="rp-item rp-add" data-add>
@@ -180,9 +180,7 @@ async function renderHome() {
 
   /* Hero: seçili kanalın gerçek kimliği (kanal yoksa depo) */
   const liveChip = prov
-    ? (CS.hasAdapter(prov)
-      ? '<span class="cs-chip live">● canlı — tarayıcıdan içerik gelir</span>'
-      : '<span class="cs-chip dim">masaüstü altyapısı gerekli</span>')
+    ? '<span class="cs-chip live">● canlı — gömülü altyapı aktif</span>'
     : '';
   hero.innerHTML = `
     <div class="hero-bg" style="background-image:url('${esc(prov?.iconUrl?.replace('%size%', '256') || repo.iconUrl || '')}');opacity:.18"></div>
@@ -248,30 +246,15 @@ async function renderHome() {
   try { bms = JSON.parse(localStorage.getItem('cs-bookmarks-v1') || '[]'); } catch {}
   const bmHtml = bms.length ? rowHTML({ name: 'Yer İmleri', items: bms }) : '';
 
-  if (prov && !CS.hasAdapter(prov)) {
-    html += `<div class="backend-note">
-      <b>Bu kanal masaüstü altyapısı gerekiyor</b>
-      <span>${esc(prov.name)}${prov.__source ? ` (kaynak: ${esc(prov.__source)})` : ''} — kaynak sitesi tarayıcıdan doğrudan
-      erişilemez. CloudStream altyapısı bağlandığında bu kanalın içeriği burada görünür.</span>
-      ${bridgeNoteHtml()}
-    </div>`;
-  } else if (backendOnly.length && !prov) {
-    html += `<div class="backend-note">
-      <b>${backendOnly.length} kanal için masaüstü altyapısı gerekiyor:</b>
-      <span>${esc(backendOnly.map((p) => p.name).join(', '))}</span>
-      ${bridgeNoteHtml()}
-    </div>`;
-  }
-  if (!visible.length && !backendOnly.length) {
+  if (!visible.length) {
     // Not devam-et / yer imleri satırlarını ezmesin
-    const note = `<div class="backend-note"><b>Bu kanaldan içerik alınamadı.</b><span>Seçicide başka bir kanal dene veya depoyu yenile.</span></div>`;
+    const note = `<div class="backend-note"><b>Bu kanaldan şu an içerik alınamadı.</b><span>Kanalın kaynak sitesi geçici olarak yanıt vermiyor olabilir. Seçiciden başka bir kanal deneyebilir veya depoyu yenileyebilirsin.</span></div>`;
     html = contHtml + bmHtml + note;
   } else {
     html += bmHtml;
   }
   rowsEl.innerHTML = html;
   bindCardEvents(rowsEl);
-  bindBridgeStart(rowsEl);
 }
 
 /* Hero: kanaldan rastgele seçilen içeriğin Netflix tarzı banner'ı */
@@ -538,9 +521,9 @@ async function openItemModal(item, providerName) {
     }
   } else if (item.embed) {
     st.textContent = 'temel bilgi';
-    desc.textContent = 'Bu içerik tarayıcıdan doğrudan oynatılabilir.';
+    desc.textContent = 'Bu içerik doğrudan oynatılabilir.';
   } else {
-    st.textContent = 'masaüstü altyapısı gerekli';
+    st.textContent = 'detay alınamadı';
     desc.textContent = 'Bu sağlayıcının içeriği şu an erişilemiyor.';
   }
 }
@@ -620,7 +603,7 @@ async function playEpisode(item, data, label = '') {
     for (let i = 0; i < Math.min(4, pool.length); i++) {
       const ok = await tryPlay(pool[i], i, 0);
       if ((player.session || 0) !== session0) return; // kullanıcı oynatıcıyı kapattı
-      if (ok) { populateSrcMenu(pool[i].url); populateAudioMenu(); return; }
+      if (ok) { populateSrcMenu(pool[i].url); populateAudioMenu(); autoPickSubtitle(); return; }
       toast(`Sunucu yanıt vermedi, yedek deneniyor…`);
     }
     toast('Hiçbir bağlantı oynatılamadı');
@@ -749,6 +732,29 @@ async function applySubtitle(idx) {
   }
   toast('Altyazı: ' + (sub.source || sub.lang));
 }
+/* Altyazı dili tespiti: 'tr'/'Türkçe'/'turkish' vb. → 'tr', İngilizce → 'en' */
+function subLangOf(sub) {
+  const raw = String(sub.lang || sub.source || '').toLowerCase();
+  if (/tr|turk|t.rk|turkish/.test(raw)) return 'tr';
+  if (/en|ingiliz|english/.test(raw)) return 'en';
+  return '';
+}
+
+/* Ayarlardaki altyazı tercihine göre otomatik aç (oynatma başlarken çağrılır) */
+function autoPickSubtitle() {
+  const pref = String(playerPrefs.get().subLang || 'yok');
+  if (pref === 'yok' || !(player.subtitles || []).length) return;
+  const wanted = pref.split(',').map((x) => x.trim()).filter(Boolean);
+  for (const w of wanted) {
+    const idx = player.subtitles.findIndex((s) => subLangOf(s) === w);
+    if (idx >= 0) {
+      applySubtitle(idx);
+      toast('Altyazı otomatik açıldı (tercihin): ' + (player.subtitles[idx].source || w));
+      return;
+    }
+  }
+}
+
 /* Ses parçası değiştir (HLS track veya farklı video kaynağı) */
 async function switchAudio(key) {
   player.audioKey = key;
@@ -1118,46 +1124,10 @@ function bindPlayer() {
    CLOUDSTREAM KÖPRÜSÜ — eksik altyapıyı başlatma rehberi
    ============================================================ */
 function bridgeNoteHtml() {
-  if (CS.bridgeOk) return '';
-  return `<div class="bridge-help">
-    <button class="btn-play" id="bridge-start">CloudStream altyapısını başlat</button>
-    <span class="bridge-hint">Kurulu değilse github.com/merb1y/elderbox → Releases altındaki
-    <b>CloudStream-4.8.0.exe</b> uygulamasını indir ve kur. Elderbox, CloudStream açıkken
-    kanalları otomatik olarak ona bağlar.</span>
-  </div>`;
+  return '';
 }
 
-function bindBridgeStart(root) {
-  const btn = $('#bridge-start', root) || document.getElementById('bridge-start');
-  if (!btn || btn.dataset.bound) return;
-  btn.dataset.bound = '1';
-  btn.addEventListener('click', async () => {
-    if (!window.pywebview) {
-      toast("Masaüstü uygulamasında kullanılabilir — tarayıcıda CloudStream uygulamasını elle başlat");
-      return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Başlatılıyor… (ilk kurulum birkaç dakika sürebilir)';
-    toast('CloudStream altyapısı başlatılıyor…');
-    try { await window.pywebview.api.start_bridge(); } catch {}
-    let ok = await CS.ensureBridge(true);
-    let tries = 0;
-    while (!ok && tries < 60) { // MSI kurulumu 1-2 dk sürebilir
-      await new Promise((r) => setTimeout(r, 3000));
-      ok = await CS.ensureBridge(true);
-      tries++;
-      if (tries % 5 === 0) btn.textContent = `Kuruluyor… (${tries * 3} sn)`;
-    }
-    if (ok) {
-      toast('CloudStream altyapısı bağlandı ✓');
-      renderHome();
-    } else {
-      toast('Bağlanılamadı — CloudStream uygulamasını elle başlatıp tekrar dene');
-      btn.disabled = false;
-      btn.textContent = 'Tekrar dene';
-    }
-  });
-}
+function bindBridgeStart() {}
 
 /* ============================================================
    NAVBAR / ARAMA / GÖRÜNÜMLER
@@ -1270,9 +1240,11 @@ function showSettingsView(panel) {
   $('#grid-view').classList.add('hidden');
   $('#cs-view').classList.remove('hidden');
   $$('.nav-link').forEach((x) => x.classList.remove('active'));
-  $('#cs-engine-badge').textContent = CS.bridgeOk
-    ? 'JVM köprüsü bağlı — 127.0.0.1:8765'
-    : (CS.desktop() ? 'Masaüstü altyapısı bağlı' : 'Web köprüsü (kısıtlı)');
+  $('#cs-engine-badge').textContent = 'Gömülü CloudStream altyapısı bağlı — 127.0.0.1:8765';
+  CS.ensureBridge().then((ok) => {
+    const el = $('#cs-engine-badge');
+    if (el) el.textContent = ok ? 'Gömülü CloudStream altyapısı bağlı — 127.0.0.1:8765' : 'Gömülü CloudStream altyapısı başlatılıyor…';
+  });
   $('#cs-jsdelivr').checked = CS.settings.jsdelivrProxy;
   renderCSOfficial();
   renderCSRepos();
@@ -1486,11 +1458,16 @@ function bindCSView() {
   $('#nf-autonext').checked = prefs.autoNext !== false;
   $('#nf-mutestart').checked = !!prefs.muteStart;
   $('#nf-pref-audio').value = prefs.prefAudio || 'Tümü';
+  $('#nf-pref-sub').value = prefs.subLang || 'yok';
   $('#nf-quality-cap').value = String(prefs.qualityCap || 0);
   $('#nf-pin').addEventListener('change', (e) => { playerPrefs.set('pin', e.target.checked); toast(e.target.checked ? 'PIN koruması açıldı' : 'PIN koruması kapandı'); });
   $('#nf-autonext').addEventListener('change', (e) => playerPrefs.set('autoNext', e.target.checked));
   $('#nf-mutestart').addEventListener('change', (e) => playerPrefs.set('muteStart', e.target.checked));
   $('#nf-pref-audio').addEventListener('change', (e) => playerPrefs.set('prefAudio', e.target.value));
+  $('#nf-pref-sub').addEventListener('change', (e) => {
+    playerPrefs.set('subLang', e.target.value);
+    toast(e.target.value === 'yok' ? 'Altyazı tercihi: otomatik seçme kapalı' : 'Altyazı tercihi kaydedildi');
+  });
   $('#nf-quality-cap').addEventListener('change', (e) => { playerPrefs.set('qualityCap', +e.target.value); toast(e.target.value === '0' ? 'Kalite sınırı: Otomatik' : 'Kalite sınırı: ' + e.target.value + 'p'); });
 }
 

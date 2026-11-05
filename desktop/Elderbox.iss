@@ -15,11 +15,11 @@ DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=installer
 OutputBaseFilename=Elderbox-Setup
-Compression=lzma2/max
+Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 SetupIconFile=app.ico
 
 [Languages]
@@ -27,7 +27,6 @@ Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"
 
 [Files]
 Source: "dist\Elderbox.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "msi\CloudStream-4.8.0.msi"; DestDir: "{tmp}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -36,11 +35,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Tasks]
 Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescription: "Ek görevler:"
-Name: "installcs"; Description: "CloudStream altyapısını kur (kanalların çalışması için gerekli)"; GroupDescription: "Ek görevler:"
 
 [Run]
-Filename: "msiexec.exe"; Parameters: "/i ""{tmp}\CloudStream-4.8.0.msi"" /qn /norestart"; StatusMsg: "CloudStream altyapısı kuruluyor… (büyük dosya, 1-2 dk sürebilir)"; Tasks: installcs
 Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} uygulamasını başlat"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\Elderbox\cs-bridge-v2"
 Type: files; Name: "{app}\Elderbox.exe"
