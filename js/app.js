@@ -1670,6 +1670,7 @@ function restoreHome() {
    CLOUDSTREAM GÖRÜNÜMÜ (depo/eklenti yönetimi)
    ============================================================ */
 let csFilterTV = 'all';
+let csFilterRepo = 'all';
 let settingsPanel = 'engine';
 
 function showSettingsView(panel) {
@@ -1745,31 +1746,41 @@ function renderCSRepos() {
     return;
   }
   wrap.innerHTML = CS.repos.map((r) => {
-    const cnt = CS.plugins.filter((p) => p.repoUrl === r.url).length;
+    const repoPlugs = CS.plugins.filter((p) => p.repoUrl === r.url);
+    const cnt = repoPlugs.length;
+    const instCnt = repoPlugs.filter((p) => p.installed !== false).length;
     const isActive = activeUrl === r.url || (!activeUrl && CS.repos[0].url === r.url);
     return `<div class="cs-repo-item">
       <div class="cri-head">
         ${r.iconUrl ? `<img src="${esc(r.iconUrl)}" style="width:22px;height:22px;border-radius:4px;object-fit:contain" alt="">` : ''}
         <span class="cri-name">${esc(r.name)}</span>
         ${isActive ? '<span class="cs-verified">AKTİF</span>' : ''}
-        <span class="cs-pill">${cnt} eklenti</span>
+        <span class="cs-pill">${instCnt} yüklü / ${cnt} kanal</span>
       </div>
       <div class="cri-desc">${esc(r.description || '')}</div>
       <div class="cri-url">${esc(r.url)}</div>
       <div class="cri-foot">
+        <button class="cs-mini" data-focus-repo="${esc(r.url)}">Kanalları Yönet</button>
         <button class="cs-mini" data-refresh="${esc(r.url)}">Yenile</button>
         <button class="cs-mini" data-activate="${esc(r.url)}">${isActive ? 'Aktif ✓' : 'Aktifleştir'}</button>
         <button class="cs-mini danger" data-remove="${esc(r.url)}">Kaldır</button>
       </div>
     </div>`;
   }).join('');
+  $$('[data-focus-repo]', wrap).forEach((b) => b.addEventListener('click', () => {
+    csFilterRepo = b.dataset.focusRepo;
+    renderCSPlugins();
+    $('#cs-repo-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
   $$('[data-refresh]', wrap).forEach((b) => b.addEventListener('click', () => csAddRepoFlow(null, b.dataset.refresh)));
   $$('[data-activate]', wrap).forEach((b) => b.addEventListener('click', () => {
     CS.setActiveRepo(b.dataset.activate);
     csStatus('Aktif depo güncellendi — ana sayfa bu depodan içerik gösterecek', 'ok');
     renderCSRepos();
+    renderCSPlugins();
   }));
   $$('[data-remove]', wrap).forEach((b) => b.addEventListener('click', () => {
+    if (csFilterRepo === b.dataset.remove) csFilterRepo = 'all';
     CS.removeRepo(b.dataset.remove);
     csStatus('Depo kaldırıldı');
     renderCSRepos(); renderCSPlugins(); renderCSOfficial();
@@ -1778,20 +1789,53 @@ function renderCSRepos() {
 
 function renderCSPlugins() {
   const wrap = $('#cs-plugin-list');
+  const tabsWrap = $('#cs-repo-tabs');
   const all = CS.plugins;
-  $('#cs-plugin-count').textContent = all.length ? `${all.length} eklenti` : '';
-  if (!all.length) {
-    wrap.innerHTML = '<p class="cs-empty">Kurulu eklenti yok — depo eklediğinde eklentiler otomatik yüklenir.</p>';
+  $('#cs-plugin-count').textContent = all.length ? `${CS.repos.length} depo · ${all.length} kanal` : '';
+  if (!all.length || !CS.repos.length) {
+    if (tabsWrap) tabsWrap.innerHTML = '';
+    wrap.innerHTML = '<p class="cs-empty">Kurulu eklenti yok — depo eklediğinde her deponun kanalları burada ayrı olarak listelenir.</p>';
     return;
   }
-  const filtered = csFilterTV === 'all'
-    ? all
-    : all.filter((p) => (p.tvTypes || []).includes(csFilterTV) || (csFilterTV === 'Movie' && !(p.tvTypes || []).length));
-  if (!filtered.length) {
-    wrap.innerHTML = '<p class="cs-empty">Bu türde eklenti yok.</p>';
-    return;
+
+  // Seçili depo kaldırıldıysa 'all' moduna dön
+  if (csFilterRepo !== 'all' && !CS.repos.some((r) => r.url === csFilterRepo)) {
+    csFilterRepo = 'all';
   }
-  wrap.innerHTML = filtered.map((p) => {
+
+  // Depo sekmeleri (Her depo ayrı sekme + Tüm Depolar Ayrı Gruplu görünüm)
+  if (tabsWrap) {
+    tabsWrap.innerHTML = `
+      <button class="cs-repo-tab ${csFilterRepo === 'all' ? 'active' : ''}" data-repotab="all">
+        <span class="crt-dot"></span>
+        <span>Tüm Depolar (Ayrı Gruplu)</span>
+        <span class="crt-count">${CS.repos.length} depo</span>
+      </button>
+      ${CS.repos.map((r) => {
+        const rp = all.filter((p) => p.repoUrl === r.url);
+        const inst = rp.filter((p) => p.installed !== false).length;
+        return `<button class="cs-repo-tab ${csFilterRepo === r.url ? 'active' : ''}" data-repotab="${esc(r.url)}">
+          ${r.iconUrl ? `<img src="${esc(r.iconUrl)}" alt="" onerror="this.style.display='none'">` : `<span class="crt-mini">${esc((r.name || 'D')[0])}</span>`}
+          <span>${esc(r.name)}</span>
+          <span class="crt-count">${inst}/${rp.length}</span>
+        </button>`;
+      }).join('')}`;
+    $$('[data-repotab]', tabsWrap).forEach((b) => b.addEventListener('click', () => {
+      csFilterRepo = b.dataset.repotab;
+      renderCSPlugins();
+    }));
+  }
+
+  const activeRepoUrl = CS.getActiveRepoUrl();
+  const targetRepos = csFilterRepo === 'all'
+    ? CS.repos
+    : CS.repos.filter((r) => r.url === csFilterRepo);
+
+  const matchTV = (p) => csFilterTV === 'all'
+    || (p.tvTypes || []).includes(csFilterTV)
+    || (csFilterTV === 'Movie' && !(p.tvTypes || []).length);
+
+  const renderPluginCard = (p) => {
     const s = p.status ?? 1;
     const scls = { 0: 's-down', 1: 's-ok', 2: 's-slow', 3: 's-beta' }[s] || 's-ok';
     const installed = p.installed !== false;
@@ -1802,7 +1846,7 @@ function renderCSPlugins() {
     const actions = installed
       ? `<div class="cs-plugin-actions"><button class="cs-mini danger" data-remove-p="${esc(p.__key)}">Kaldır</button></div>`
       : `<div class="cs-plugin-actions"><button class="cs-install-btn" data-install="${esc(p.__key)}">Yükle</button></div>`;
-    return `<div class="cs-plugin-item ${installed ? '' : 'disabled'}">
+    return `<div class="cs-plugin-item ${installed ? '' : 'disabled'}" data-pkey="${esc(p.__key)}">
       <div class="cs-plugin-icon">${icon}</div>
       <div class="cs-plugin-body">
         <div class="cs-plugin-name">${esc(p.name)} <span class="cs-badge ${scls}">${CS.STATUS_LABEL[s] || 'Bilinmiyor'}</span>${ad ? `<span class="cs-badge s-ok">ana sayfada canlı</span>` : (installed ? '' : '<span class="cs-badge tv">yüklü değil</span>')}</div>
@@ -1816,7 +1860,39 @@ function renderCSPlugins() {
       </div>
       ${actions}
     </div>`;
+  };
+
+  const groupsHtml = targetRepos.map((r) => {
+    const repoAll = all.filter((p) => p.repoUrl === r.url);
+    const repoFiltered = repoAll.filter(matchTV);
+    const installedCount = repoAll.filter((p) => p.installed !== false).length;
+    const isActive = activeRepoUrl === r.url || (!activeRepoUrl && CS.repos[0]?.url === r.url);
+
+    return `<section class="cs-repo-group" data-repogroup="${esc(r.url)}">
+      <header class="cs-rg-head">
+        <div class="cs-rg-title">
+          ${r.iconUrl ? `<img class="cs-rg-icon" src="${esc(r.iconUrl)}" alt="" onerror="this.style.display='none'">` : `<span class="cs-rg-fallback">${esc((r.name || 'D')[0])}</span>`}
+          <div>
+            <div class="cs-rg-name">
+              <span>${esc(r.name)}</span>
+              ${isActive ? '<span class="cs-verified">AKTİF DEPO</span>' : ''}
+              <span class="cs-pill">${installedCount} yüklü / ${repoAll.length} kanal</span>
+            </div>
+            <div class="cs-rg-url">${esc(r.url)}</div>
+          </div>
+        </div>
+        <div class="cs-rg-actions">
+          <button class="cs-mini" data-install-repo="${esc(r.url)}" title="Bu depodaki tüm kanalları yükle">Tümünü Yükle</button>
+          <button class="cs-mini danger" data-uninstall-repo="${esc(r.url)}" title="Bu depodaki tüm kurulu kanalları kaldır">Tümünü Kaldır</button>
+        </div>
+      </header>
+      ${repoFiltered.length
+        ? `<div class="cs-plugin-list">${repoFiltered.map(renderPluginCard).join('')}</div>`
+        : `<p class="cs-empty" style="padding:10px 4px">Bu depoda seçili türde (${esc(csFilterTV)}) kanal bulunamadı.</p>`}
+    </section>`;
   }).join('');
+
+  wrap.innerHTML = groupsHtml || '<p class="cs-empty">Bu filtreye uygun kanal bulunamadı.</p>';
 
   $$('[data-install]', wrap).forEach((b) => b.addEventListener('click', async () => {
     const p = CS.plugins.find((x) => x.__key === b.dataset.install);
@@ -1824,31 +1900,57 @@ function renderCSPlugins() {
     b.disabled = true; b.textContent = 'Yükleniyor…';
     try {
       await CS.installPlugin(b.dataset.install);
-      toast(`${p.name} yüklendi ✓`);
+      toast(`${p.name} (${p.repoName}) yüklendi ✓`);
     } catch (e) {
       toast('Yükleme başarısız: ' + e.message);
     }
-    // Depo görünümündeyken ana menüye atlamayı önle; yalnızca ana sayfa görünürse yenile
-    renderCSPlugins();
-    renderCSRepos();
-    if ($('#cs-view').classList.contains('hidden')) renderHome();
-  }));
-  $$('[data-remove-p]', wrap).forEach((b) => b.addEventListener('click', async () => {
-    const p = CS.plugins.find((x) => x.__key === b.dataset.removeP);
-    await CS.uninstallPlugin(b.dataset.removeP);
-    toast(`${p?.name || 'Eklenti'} kaldırıldı`);
-    // Depo görünümündeyken ana menüye atlamayı önle; yalnızca ana sayfa görünürse yenile
     renderCSPlugins();
     renderCSRepos();
     if ($('#cs-view').classList.contains('hidden')) renderHome();
   }));
 
-  // Kaynak siteleri dex'ten çöz (arka planda, kartları zenginleştir)
+  $$('[data-remove-p]', wrap).forEach((b) => b.addEventListener('click', async () => {
+    const p = CS.plugins.find((x) => x.__key === b.dataset.removeP);
+    await CS.uninstallPlugin(b.dataset.removeP);
+    toast(`${p?.name || 'Eklenti'} kaldırıldı`);
+    renderCSPlugins();
+    renderCSRepos();
+    if ($('#cs-view').classList.contains('hidden')) renderHome();
+  }));
+
+  $$('[data-install-repo]', wrap).forEach((b) => b.addEventListener('click', async () => {
+    const rUrl = b.dataset.installRepo;
+    const toInstall = CS.plugins.filter((p) => p.repoUrl === rUrl && p.installed === false);
+    if (!toInstall.length) { toast('Bu depodaki tüm kanallar zaten yüklü'); return; }
+    b.disabled = true; b.textContent = `Yükleniyor (0/${toInstall.length})…`;
+    let done = 0;
+    for (const p of toInstall) {
+      try { await CS.installPlugin(p.__key); done++; } catch {}
+      b.textContent = `Yükleniyor (${done}/${toInstall.length})…`;
+    }
+    toast(`${done} kanal yüklendi ✓`);
+    renderCSPlugins();
+    renderCSRepos();
+  }));
+
+  $$('[data-uninstall-repo]', wrap).forEach((b) => b.addEventListener('click', async () => {
+    const rUrl = b.dataset.uninstallRepo;
+    const installed = CS.plugins.filter((p) => p.repoUrl === rUrl && p.installed !== false);
+    if (!installed.length) { toast('Bu depoda kurulu kanal yok'); return; }
+    for (const p of installed) {
+      try { await CS.uninstallPlugin(p.__key); } catch {}
+    }
+    toast(`Depodaki ${installed.length} kanal kaldırıldı`);
+    renderCSPlugins();
+    renderCSRepos();
+  }));
+
+  // Kaynak siteleri dex'ten çöz (arka planda, her deponun kendi kartını zenginleştir)
+  const visiblePlugins = targetRepos.flatMap((r) => all.filter((p) => p.repoUrl === r.url && matchTV(p)));
   (async () => {
-    for (const p of filtered.slice(0, 40)) {
+    for (const p of visiblePlugins.slice(0, 50)) {
       const src = await CS.probeSource(p);
-      const card = [...wrap.querySelectorAll('.cs-plugin-item')].find((el) =>
-        el.querySelector('.cs-plugin-name')?.textContent.startsWith(p.name));
+      const card = wrap.querySelector(`.cs-plugin-item[data-pkey="${CSS.escape(p.__key)}"]`);
       const line = card?.querySelector('.cs-plugin-repo');
       if (line && src) line.innerHTML = `${esc(p.repoName || '')} · kaynak: <b>${esc(src)}</b>`;
       else if (line) line.innerHTML = esc(p.repoName || '');
@@ -1866,7 +1968,8 @@ async function csAddRepoFlow(input, presetUrl = null) {
   addBtn.disabled = true;
   try {
     const { repository, added, total, errors } = await CS.addRepo(value);
-    csStatus(`"${repository.name}" eklendi — ${added} yeni eklenti kuruldu (toplam ${total}).${errors.length ? ' Hatalar: ' + errors.join(' | ') : ''}`, 'ok');
+    csFilterRepo = repository.url; // yeni eklenen depoyu otomatik seç
+    csStatus(`"${repository.name}" eklendi — ${added} yeni eklenti bulundu (toplam ${total}).${errors.length ? ' Hatalar: ' + errors.join(' | ') : ''}`, 'ok');
     $('#cs-repo-input').value = '';
     renderCSRepos(); renderCSPlugins(); renderCSOfficial();
   } catch (e) {
