@@ -387,7 +387,7 @@ function realCard(item, providerName, opts = {}) {
   const uid = registerItem(item, providerName);
   const poster = item.poster || '';
   const rmBtn = opts.removableHistory
-    ? `<button class="card-rm-hist" data-rmhist="${esc(item.url)}" title="İzlemeye Devam Et listesinden kaldır">✕</button>`
+    ? `<button class="card-rm-hist" data-rmhist="${esc(item.url)}" title="İzlemeye Devam Et listesinden kaldır"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>`
     : '';
   return `<div class="card" data-uid="${uid}">
     <div class="card-thumb">
@@ -438,12 +438,25 @@ function schedulePreviewHide(delay = 0) {
   clearTimeout(pvHideTimer);
   pvHideTimer = setTimeout(() => { if (!$('#preview').matches(':hover')) hidePreview(); }, delay);
 }
-function hidePreview() { clearTimeout(pvTimer); const pv = $('#preview'); pv.classList.add('hidden'); pv.innerHTML = ''; }
+function hidePreview() {
+  clearTimeout(pvTimer);
+  const pv = $('#preview');
+  if (pv.classList.contains('hidden')) return;
+  pv.classList.add('closing');
+  setTimeout(() => {
+    if (pv.classList.contains('closing')) {
+      pv.classList.add('hidden');
+      pv.classList.remove('closing');
+      pv.innerHTML = '';
+    }
+  }, 150);
+}
 function showPreview(card) {
   const reg = getReg(card.dataset.uid);
   if (!reg) return;
   const { item } = reg;
   const pv = $('#preview');
+  pv.classList.remove('closing');
   const bm = CS.isBookmarked(item.url);
   pv.innerHTML = `
     <div class="pv-img-wrap">
@@ -509,7 +522,9 @@ async function openItemModal(item, providerName) {
     <div class="md-backdrop">
       ${item.poster ? `<img class="md-bg" src="${esc(item.poster)}" style="opacity:.55" alt="">` : ''}
       <div class="md-fade"></div>
-      <button class="md-close" title="Kapat"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 5.7 18.3 4.3 16.9 10.6 10.6 4.3 4.3 5.7 2.9 12 9.4l4.9-4.9z"/></svg></button>
+      <button class="md-close" title="Kapat (Esc)">
+        <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
       <div class="md-head">
         <h2 class="md-item-title">${esc(item.name)}</h2>
         <div class="md-btns">
@@ -539,7 +554,8 @@ async function openItemModal(item, providerName) {
       </div>
     </div>`;
 
-  $('#modal-overlay').classList.remove('hidden');
+  const ov = $('#modal-overlay');
+  ov.classList.remove('hidden', 'closing');
   document.body.classList.add('no-scroll');
 
   $('.md-close', m).addEventListener('click', closeModal);
@@ -680,8 +696,16 @@ async function openItemModal(item, providerName) {
 }
 
 function closeModal() {
-  $('#modal-overlay').classList.add('hidden');
-  document.body.classList.remove('no-scroll');
+  const ov = $('#modal-overlay');
+  if (ov.classList.contains('hidden')) return;
+  ov.classList.add('closing');
+  setTimeout(() => {
+    if (ov.classList.contains('closing')) {
+      ov.classList.add('hidden');
+      ov.classList.remove('closing');
+      document.body.classList.remove('no-scroll');
+    }
+  }, 190);
 }
 $('#modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') closeModal(); });
 
@@ -1299,9 +1323,11 @@ function updateSeekUI() {
         <div class="ne-info">
           <div class="ne-label">${autoOn ? `Sıradaki bölüm · ${rem} sn` : 'Sıradaki bölüm'}</div>
           <div class="ne-title">${esc(nextEp.name || ('Bölüm ' + epNum))}</div>
-          <div style="display:flex;gap:8px;margin-top:auto">
+          <div style="display:flex;gap:8px;margin-top:auto;align-items:center">
             <button class="ne-play" data-ne-play>▶ Şimdi Oynat</button>
-            <button class="cs-mini" data-ne-close title="Gizle">✕</button>
+            <button class="ne-close" data-ne-close title="Gizle">
+              <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+            </button>
           </div>
         </div>`;
       $('[data-ne-play]', nextCard)?.addEventListener('click', () => playNextEpisode());
@@ -1336,15 +1362,35 @@ function bindPlayer() {
   $('#p-back').addEventListener('click', closePlayer);
   p.addEventListener('mousemove', wakeControls);
 
-  /* Oynat/duraklat */
+  /* Oynat/duraklat + merkez animasyonlu ikon */
+  let tapTimer = null;
+  const showTapFeedback = (playing) => {
+    const fb = $('#p-tap-feedback');
+    if (!fb) return;
+    fb.innerHTML = playing
+      ? '<svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>';
+    fb.classList.remove('hidden', 'pop-anim');
+    void fb.offsetWidth;
+    fb.classList.add('pop-anim');
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => fb.classList.add('hidden'), 520);
+  };
   const toggle = () => {
     if (!v.src && !window.__hls) return;
-    if (v.paused) { v.play().then(() => setPlayIcon(true)).catch(() => {}); }
-    else { v.pause(); setPlayIcon(false); }
+    if (v.paused) {
+      v.play().then(() => setPlayIcon(true)).catch(() => {});
+      showTapFeedback(true);
+    } else {
+      v.pause();
+      setPlayIcon(false);
+      showTapFeedback(false);
+    }
     wakeControls();
   };
   $('#p-play').addEventListener('click', toggle);
   v.addEventListener('click', toggle);
+  v.addEventListener('dblclick', () => $('#p-full')?.click());
   v.addEventListener('pause', () => setPlayIcon(false));
   v.addEventListener('play', () => setPlayIcon(true));
 
@@ -1909,8 +1955,8 @@ function bindWindowControls() {
   $('#win-close').addEventListener('click', () => api.close());
   window.addEventListener('win-maximize', (e) => {
     maxBtn.innerHTML = e.detail
-      ? '<svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/><path d="M3.5 1.5V0.5h8v8h-1" fill="none" stroke="currentColor" stroke-width="1"/></svg>'
-      : '<svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
+      ? '<svg viewBox="0 0 16 16"><rect x="2.8" y="4.8" width="8.2" height="8.2" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.2 4.8V3.4c0-.6.5-1.1 1.1-1.1h6.2c.6 0 1.1.5 1.1 1.1v6.2c0 .6-.5 1.1-1.1 1.1h-1.4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'
+      : '<svg viewBox="0 0 16 16"><rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
   });
   bindWindowResize(api);
 }

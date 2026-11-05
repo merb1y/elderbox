@@ -6,8 +6,8 @@
 <title>Elderbox</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" defer></script>
 <link rel="icon" type="image/png" href="assets/img/favicon.png">
-<link rel="stylesheet" href="css/style.css?v=25">
-<script>window.__ASSET_V = 25;</script>
+<link rel="stylesheet" href="css/style.css?v=26">
+<script>window.__ASSET_V = 26;</script>
 </head>
 <body>
 
@@ -49,9 +49,15 @@
       </button>
       <!-- Masaüstü kabuğu pencere düğmeleri (yalnız Elderbox.exe içinde görünür) -->
       <div class="win-controls" id="win-controls">
-        <button id="win-min" title="Küçült"><svg viewBox="0 0 12 12"><path d="M1 6h10" stroke="currentColor" stroke-width="1"/></svg></button>
-        <button id="win-max" title="Büyüt / Geri"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
-        <button id="win-close" title="Kapat"><svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1"/></svg></button>
+        <button id="win-min" title="Küçült">
+          <svg viewBox="0 0 16 16"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <button id="win-max" title="Büyüt / Geri">
+          <svg viewBox="0 0 16 16"><rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <button id="win-close" title="Kapat">
+          <svg viewBox="0 0 16 16"><path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
       </div>
     </div>
   </header>
@@ -238,6 +244,7 @@
   <video id="video" playsinline></video>
   <div id="p-sub-overlay" class="hidden"></div>
   <div id="p-iframe-wrap" class="hidden"></div>
+  <div id="p-tap-feedback" class="p-tap-feedback hidden"></div>
 
   <!-- İntroyu Atla & Sıradaki Bölüm & Bölüm Çekmecesi -->
   <button class="skip-intro hidden" id="p-skip-intro">İntroyu Atla</button>
@@ -245,7 +252,9 @@
   <aside class="eps-drawer hidden" id="eps-drawer">
     <div class="eps-head">
       <span id="eps-drawer-title">Bölümler</span>
-      <button id="eps-close" title="Kapat">✕</button>
+      <button id="eps-close" title="Kapat">
+        <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
     </div>
     <div class="eps-list" id="eps-drawer-list"></div>
   </aside>
@@ -332,8 +341,8 @@
 <div class="win-resize" id="win-resize-se"></div>
 
 <script src="/state.js"></script>
-<script src="js/data.js?v=25"></script>
-<script src="js/cs-bridge.js?v=25"></script>
-<script src="js/app.js?v=25"></script>
+<script src="js/data.js?v=26"></script>
+<script src="js/cs-bridge.js?v=26"></script>
+<script src="js/app.js?v=26"></script>
 </body>
 </html>
