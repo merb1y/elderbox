@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Köprü sunucusu — arayüz + sunucu-taraflı içerik proxy'si + gömülü CloudStream başlatıcı.
-
-Statik dosyaları sunar, /csproxy üzerinden sağlayıcı akışlarını ve kısaltma
-adreslerini çözer, /bridge-start ucuyla gömülü CloudStream (BridgeServer)
-altyapısını otomatik olarak ayağa kaldırır.
+Köprü sunucusu — arayüz + sunucu-taraflı içerik proxy'si + gömülü CloudStream başlatıcı
++ disk tabanlı kalıcı kullanıcı durumu (%LOCALAPPDATA%\\Elderbox\\user-state.json).
 """
+import json
 import os
 import subprocess
 import sys
@@ -19,6 +17,40 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 BRIDGE_HEALTH = "http://127.0.0.1:8765/api/health"
 _SRV_BRIDGE_LOCK = threading.Lock()
+_STATE_LOCK = threading.Lock()
+
+
+def _state_file_path() -> str:
+    local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    folder = os.path.join(local_app_data, "Elderbox")
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, "user-state.json")
+
+
+def _read_disk_state() -> dict:
+    path = _state_file_path()
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_disk_state(data: dict) -> None:
+    if not isinstance(data, dict):
+        return
+    path = _state_file_path()
+    tmp = path + ".tmp"
+    with _STATE_LOCK:
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, path)
+        except Exception:
+            pass
 
 
 def _bridge_alive(timeout: float = 1.0) -> bool:
@@ -86,7 +118,28 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/state":
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(min(length, 16 * 1024 * 1024)) if length > 0 else b"{}"
+            try:
+                incoming = json.loads(raw.decode("utf-8", "replace"))
+                if isinstance(incoming, dict):
+                    _write_disk_state(incoming)
+                self._json(200, {"ok": True})
+            except Exception as e:
+                self._json(400, {"error": str(e)})
+            return
+        self._json(404, {"error": "not found"})
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -97,6 +150,12 @@ class Handler(SimpleHTTPRequestHandler):
             ok = ensure_local_bridge()
             self._json(200, {"ok": ok})
             return
+        if parsed.path == "/api/state":
+            self._json(200, _read_disk_state())
+            return
+        if parsed.path == "/state.js":
+            self._serve_state_js()
+            return
         if parsed.path == "/health":
             body = b'{"ok":true,"bridge":"dev"}'
             self.send_response(200)
@@ -106,6 +165,75 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
             return
         super().do_GET()
+
+    def _serve_state_js(self):
+        disk_state = _read_disk_state()
+        payload = json.dumps(disk_state, ensure_ascii=False)
+        script = f"""(function() {{
+  try {{
+    var disk = {payload};
+    var origSet = Storage.prototype.setItem;
+    var origRem = Storage.prototype.removeItem;
+    var origClr = Storage.prototype.clear;
+
+    // Diskteki kalıcı veriyi localStorage'a geri yükle
+    if (disk && typeof disk === 'object') {{
+      Object.keys(disk).forEach(function(k) {{
+        var cur = localStorage.getItem(k);
+        if (cur === null || cur === '[]' || cur === '{{}}') {{
+          origSet.call(localStorage, k, disk[k]);
+        }}
+      }});
+    }}
+
+    var syncTimer = null;
+    function flushToDisk() {{
+      try {{
+        var snap = {{}};
+        for (var i = 0; i < localStorage.length; i++) {{
+          var k = localStorage.key(i);
+          if (k) snap[k] = localStorage.getItem(k);
+        }}
+        fetch('/api/state', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify(snap),
+          keepalive: true
+        }}).catch(function() {{}});
+      }} catch (e) {{}}
+    }}
+    function scheduleSync() {{
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(flushToDisk, 120);
+    }}
+
+    Storage.prototype.setItem = function(k, v) {{
+      origSet.call(this, k, v);
+      if (this === localStorage) scheduleSync();
+    }};
+    Storage.prototype.removeItem = function(k) {{
+      origRem.call(this, k);
+      if (this === localStorage) scheduleSync();
+    }};
+    Storage.prototype.clear = function() {{
+      origClr.call(this);
+      if (this === localStorage) scheduleSync();
+    }};
+
+    // Mevcut localStorage doluysa ve disk henüz boşsa diski hemen güncelle
+    if (localStorage.length > 0 && (!disk || Object.keys(disk).length === 0)) {{
+      flushToDisk();
+    }}
+  }} catch (e) {{}}
+}})();
+"""
+        body = script.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _proxy(self, parsed):
         import re
@@ -125,7 +253,6 @@ class Handler(SimpleHTTPRequestHandler):
         })
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
-                # resolve=1: yalnızca yönlendirmeyi çöz, nihai URL'yi dön (kısa kod desteği)
                 if (qs.get("resolve") or [""])[0] == "1":
                     self._json(200, {"url": r.geturl()})
                     return
@@ -135,8 +262,6 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(502, {"error": str(e)})
             return
 
-        # HLS çalma listeleri: segment/alt-playlist adreslerini köprüye çevir,
-        # yoksa tarayıcı göreli adresleri çözemez.
         base = target.split("?")[0]
         if "mpegurl" in ctype.lower() or base.endswith(".m3u8"):
             referer_q = urllib.parse.quote(referer, safe="")
@@ -166,7 +291,6 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def _json(self, code, obj):
-        import json
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")

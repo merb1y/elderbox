@@ -6,6 +6,12 @@ Arayüzü ve içerik proxy'sini yerel bir HTTP sunucusu olarak arka planda
 çalıştırır, gömülü CloudStream altyapısını (BridgeServer, 127.0.0.1:8765)
 otomatik olarak başlatır ve aynı işlem içinde pywebview (Edge WebView2)
 penceresi açar.
+
+Kalıcılık:
+- WebView2 profili (localStorage, çerezler, HTTP önbelleği) private_mode=False
+  ve sabit storage_path (%LOCALAPPDATA%\\Elderbox\\webview-data) ile kalıcıdır.
+- Ayrıca tüm depo/kanal/geçmiş/ayar verileri server.py üzerinden
+  %LOCALAPPDATA%\\Elderbox\\user-state.json dosyasına da yedeklenir.
 """
 import atexit
 import importlib.util
@@ -25,6 +31,14 @@ BRIDGE_CACHE_VERSION = "v2"
 
 _BRIDGE_LOCK = threading.Lock()
 _BRIDGE_PROC = None
+
+
+def app_data_root() -> str:
+    """Kalıcı uygulama verilerinin (%LOCALAPPDATA%\\Elderbox) kök klasörü."""
+    local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    root = os.path.join(local_app_data, "Elderbox")
+    os.makedirs(root, exist_ok=True)
+    return root
 
 
 def bridge_alive(timeout: float = 1.5) -> bool:
@@ -68,8 +82,7 @@ def _locate_or_extract_bridge() -> str:
             return cand
 
     # 2) Tek-dosya Elderbox.exe içinde gömülü cs-bridge.zip → %LOCALAPPDATA%\Elderbox\cs-bridge-v2
-    local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    cache_dir = os.path.join(local_app_data, "Elderbox", f"cs-bridge-{BRIDGE_CACHE_VERSION}")
+    cache_dir = os.path.join(app_data_root(), f"cs-bridge-{BRIDGE_CACHE_VERSION}")
     ready_flag = os.path.join(cache_dir, ".ready")
     if os.path.isfile(ready_flag) and _is_valid_bridge_dir(cache_dir):
         return cache_dir
@@ -168,7 +181,6 @@ def resource_dir() -> str:
     """Arayüz dosyalarının (index.html, css, js, assets) olduğu klasör."""
     if getattr(sys, "frozen", False):  # PyInstaller paketi
         return os.path.join(sys._MEIPASS, "ui")
-    # Geliştirme ortamında desktop/ klasörünün bir üstü
     here = os.path.dirname(os.path.abspath(__file__))
     if os.path.isfile(os.path.join(here, "index.html")):
         return here
@@ -198,7 +210,6 @@ def pick_port() -> int:
     env = os.environ.get("Elderbox_PORT")
     if env and env.isdigit():
         return int(env)
-    # Sabit port: localStorage origin'i her açılışta aynı kalsın
     for p in range(BASE_PORT, BASE_PORT + 11):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -273,6 +284,9 @@ def main() -> None:
 
     import webview
 
+    storage_dir = os.path.join(app_data_root(), "webview-data")
+    os.makedirs(storage_dir, exist_ok=True)
+
     api = WindowApi()
     win = webview.create_window(
         "Elderbox",
@@ -287,7 +301,8 @@ def main() -> None:
     )
     api.attach(win)
     try:
-        webview.start()
+        # private_mode=False ve sabit storage_path: localStorage ve önbellek ASLA sıfırlanmaz
+        webview.start(private_mode=False, storage_path=storage_dir)
     finally:
         stop_bridge()
         httpd.shutdown()
