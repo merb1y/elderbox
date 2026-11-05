@@ -800,10 +800,29 @@ const CS = (() => {
   /* ============================================================
      Arama + detay + yer imleri + geçmiş
      ============================================================ */
-  async function getSearch(repoUrl, query) {
+  async function getSearch(repoUrl, query, allChannels = false) {
     if (!query.trim()) return [];
     await ensureBridge();
     if (bridgeOk) {
+      if (allChannels) {
+        const provs = repoProviders(repoUrl);
+        if (provs.length > 1) {
+          const lists = await Promise.all(provs.map(async (p) => {
+            try {
+              const params = new URLSearchParams({ q: query });
+              appendProvParams(params, p);
+              const res = await fetch(`${BRIDGE_URL}/api/search?${params.toString()}`);
+              if (!res.ok) return [];
+              const data = await res.json();
+              return (data.results || []).map((i) => ({
+                name: i.name, url: i.url, poster: i.poster || '',
+                apiName: i.apiName || p.name, type: tvTypeToUi(i.type), year: i.year || null,
+              }));
+            } catch { return []; }
+          }));
+          return lists.flat();
+        }
+      }
       try { return await restClient.search(repoUrl, query); } catch { /* aşağı */ }
     }
     const provs = repoProviders(repoUrl);
@@ -845,6 +864,10 @@ const CS = (() => {
     history = history.slice(0, 20);
     saveHistory();
   }
+  function removeHistory(url) {
+    history = history.filter((h) => h.url !== url);
+    saveHistory();
+  }
   function getHistory() { return history; }
 
   load();
@@ -866,7 +889,7 @@ const CS = (() => {
     getActiveProvider, getActiveProviderKey, setActiveProviderKey,
     getHome, getSearch, getDetails,
     /* yer imi / geçmiş */
-    toggleBookmark, isBookmarked, pushHistory, getHistory,
+    toggleBookmark, isBookmarked, pushHistory, removeHistory, getHistory,
     storeKeys: { LS_REPOS, LS_PLUGINS, LS_SETTINGS, LS_ACTIVE },
   };
 })();

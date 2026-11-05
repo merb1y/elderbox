@@ -6,8 +6,8 @@
 <title>Elderbox</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" defer></script>
 <link rel="icon" type="image/png" href="assets/img/favicon.png">
-<link rel="stylesheet" href="css/style.css?v=24">
-<script>window.__ASSET_V = 24;</script>
+<link rel="stylesheet" href="css/style.css?v=25">
+<script>window.__ASSET_V = 25;</script>
 </head>
 <body>
 
@@ -25,11 +25,16 @@
       <a href="#" class="nav-link" data-view="list">Listem</a>
     </nav>
     <div class="nav-right">
+      <button class="surprise-btn" id="surprise-btn" title="Rastgele bir içerik aç (Bana Sürpriz Yap)">
+        <svg viewBox="0 0 24 24"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+        <span>Sürpriz Yap</span>
+      </button>
       <div class="search-box" id="search-box">
         <button class="icon-btn" id="search-toggle" title="Ara">
           <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L21 19.5l-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
         </button>
         <input type="text" id="search-input" placeholder="Başlıklar, kişi, türler" autocomplete="off">
+        <button class="search-scope-btn" id="search-all-toggle" title="Depodaki tüm kurulu kanallarda ara">Tüm Kanallar</button>
       </div>
       <div class="dropdown" id="notif-dd">
         <button class="icon-btn" id="notif-btn" title="Bildirimler">
@@ -234,6 +239,17 @@
   <div id="p-sub-overlay" class="hidden"></div>
   <div id="p-iframe-wrap" class="hidden"></div>
 
+  <!-- İntroyu Atla & Sıradaki Bölüm & Bölüm Çekmecesi -->
+  <button class="skip-intro hidden" id="p-skip-intro">İntroyu Atla</button>
+  <div class="next-ep hidden" id="p-next-card"></div>
+  <aside class="eps-drawer hidden" id="eps-drawer">
+    <div class="eps-head">
+      <span id="eps-drawer-title">Bölümler</span>
+      <button id="eps-close" title="Kapat">✕</button>
+    </div>
+    <div class="eps-list" id="eps-drawer-list"></div>
+  </aside>
+
   <div class="player-top" id="player-top">
     <button class="p-back" id="p-back" title="Geri (Esc)">
       <svg viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg>
@@ -260,6 +276,9 @@
         <button class="p-btn p-seek" id="p-fwd10" title="10 saniye ileri (→)">
           <svg viewBox="0 0 24 24"><path d="M12 5V1l5 5-5 5V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/></svg>
         </button>
+        <button class="p-btn hidden" id="p-next" title="Sonraki Bölüm (N)">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
         <div class="p-volume" id="p-volume">
           <button class="p-btn" id="p-mute" title="Ses (M)"></button>
           <input type="range" id="p-vol" min="0" max="100" value="100">
@@ -268,6 +287,13 @@
       <div class="p-mid" id="p-mid"></div>
       <div class="p-right">
         <span class="p-time" id="p-time"></span>
+        <button class="p-btn hidden" id="p-eps-btn" title="Bölümler">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+        </button>
+        <div class="p-menu-wrap" id="p-speed-wrap">
+          <button class="p-btn p-txt" id="p-speed" title="Oynatma Hızı">1x</button>
+          <div class="p-menu hidden" id="p-speed-menu"></div>
+        </div>
         <div class="p-menu-wrap hidden" id="p-audio-wrap">
           <button class="p-btn" id="p-audio" title="Ses (dublaj / orijinal)">
             <svg viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
@@ -275,7 +301,7 @@
           <div class="p-menu hidden" id="p-audio-menu"></div>
         </div>
         <div class="p-menu-wrap hidden" id="p-tag-wrap">
-          <button class="p-btn" id="p-tag" title="Kaynaklar (dublaj / altyazı varyantları)">
+          <button class="p-btn" id="p-tag" title="Kaynaklar ve Altyazılar">
             <svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h12v2H3zm0 6h18v2H3z"/></svg>
           </button>
           <div class="p-menu hidden" id="p-tag-menu"></div>
@@ -286,6 +312,9 @@
           </button>
           <div class="p-menu hidden" id="p-quality-menu"></div>
         </div>
+        <button class="p-btn" id="p-pip" title="Resim İçinde Resim (P)">
+          <svg viewBox="0 0 24 24"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/></svg>
+        </button>
         <button class="p-btn" id="p-full" title="Tam Ekran (F)">
           <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zM14 5v2h3v3h2V5z"/></svg>
         </button>
@@ -303,8 +332,8 @@
 <div class="win-resize" id="win-resize-se"></div>
 
 <script src="/state.js"></script>
-<script src="js/data.js?v=24"></script>
-<script src="js/cs-bridge.js?v=24"></script>
-<script src="js/app.js?v=24"></script>
+<script src="js/data.js?v=25"></script>
+<script src="js/cs-bridge.js?v=25"></script>
+<script src="js/app.js?v=25"></script>
 </body>
 </html>

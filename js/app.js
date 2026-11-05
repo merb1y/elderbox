@@ -238,9 +238,17 @@ async function renderHome() {
 
   /* İzlemeye devam et — yarım bırakılan içerikler en üstte */
   const cont = CS.getHistory().filter((h) => h.poster && h.posPct > 0.5 && h.posPct < 95);
-  const contHtml = cont.length ? rowHTML({ name: 'İzlemeye Devam Et', items: cont }) : '';
+  const contHtml = cont.length ? rowHTML({ name: 'İzlemeye Devam Et', items: cont, removableHistory: true }) : '';
+
+  /* Bugünün Top 10 Listesi — posterli benzersiz ilk 10 içerik */
+  const uniqTop = [...new Map(visible.flatMap((r) => r.items).filter((i) => i.poster).map((i) => [i.url, i])).values()].slice(0, 10);
+  const top10Html = (!state.typeFilter && uniqTop.length >= 4) ? top10RowHTML(uniqTop, prov?.name || repo.name) : '';
+
   let html = contHtml;
-  for (const r of visible) html += rowHTML(r);
+  visible.forEach((r, idx) => {
+    html += rowHTML(r);
+    if (idx === 0 && top10Html) html += top10Html;
+  });
   // Yer imleri
   let bms = [];
   try { bms = JSON.parse(localStorage.getItem('cs-bookmarks-v1') || '[]'); } catch {}
@@ -282,13 +290,30 @@ function renderHeroFeatured(item, prov, repo) {
           <svg viewBox="0 0 24 24" style="width:24px;height:24px;fill:#fff"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
           Daha Fazla Bilgi
         </button>
+        <button class="btn-info" id="hero-surprise" title="Rastgele bir içerik seç ve aç">
+          <svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:#e50914"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+          Bana Sürpriz Yap
+        </button>
       </div>
     </div>`;
   $('#hero-play').addEventListener('click', () => heroPlay(item));
   $('#hero-info').addEventListener('click', () => openItemModal(item, item.apiName || prov?.name));
+  $('#hero-surprise').addEventListener('click', () => surprisePlay());
 }
 
-/* Hero Oynat: film/canlıysa doğrudan, diziyse ilk bölümden */
+/* Bana Sürpriz Yap — mevcut içerik havuzundan rastgele bir içerik seçip açar */
+function surprisePlay() {
+  const pool = [...new Map((state.homeCache.rows || []).flatMap((r) => r.items).map((i) => [i.url, i])).values()];
+  if (!pool.length) {
+    toast('Önce bir kanaldan içeriklerin yüklenmesini bekle');
+    return;
+  }
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  toast(`🎲 Sürpriz seçim: ${pick.name}`);
+  openItemModal(pick, pick.apiName || state.homeCache.prov?.name);
+}
+
+/* Hero / Önizleme Oynat: film/canlıysa doğrudan, diziyse kayıtlı veya ilk bölümden */
 async function heroPlay(item) {
   if (item.embed) { playItem(item); return; }
   const repoUrl = state.homeCache.repo?.url || CS.getActiveRepo()?.url;
@@ -296,9 +321,17 @@ async function heroPlay(item) {
   const det = await CS.getDetails(repoUrl, item).catch(() => null);
   if (det?.dataUrl) { playEpisode(item, det.dataUrl, ''); return; }
   if (det?.episodes?.length) {
-    const e0 = det.episodes[0];
-    const label = `${e0.season ? 'S' + e0.season + ':' : ''}B${e0.episode ?? '?'} ${e0.name || ''}`.trim();
-    playEpisode(item, e0.data, label);
+    item.__episodes = det.episodes;
+    const hist = CS.getHistory().find((x) => x.url === item.url);
+    let idx = 0;
+    const targetData = item.episodeData || hist?.episodeData;
+    if (targetData) {
+      const found = det.episodes.findIndex((e) => e.data === targetData);
+      if (found >= 0) idx = found;
+    }
+    const ep = det.episodes[idx];
+    const label = `${ep.season ? 'S' + ep.season + ':' : ''}B${ep.episode ?? (idx + 1)} ${ep.name || ''}`.trim();
+    playEpisode(item, ep.data, label, det.episodes, idx);
     return;
   }
   openItemModal(item, item.apiName);
@@ -306,7 +339,7 @@ async function heroPlay(item) {
 
 /* HomePageList → HTML satırı */
 function rowHTML(r) {
-  const cards = r.items.slice(0, 14).map((it) => realCard(it, it.apiName)).join('');
+  const cards = r.items.slice(0, 14).map((it) => realCard(it, it.apiName, { removableHistory: !!r.removableHistory })).join('');
   return `
     <section class="row">
       <div class="row-head">
@@ -321,12 +354,44 @@ function rowHTML(r) {
     </section>`;
 }
 
+/* Netflix Top 10 satırı — dev sıra numaralı poster kartları */
+function top10RowHTML(items, chanName = '') {
+  const cards = items.slice(0, 10).map((item, idx) => {
+    const uid = registerItem(item, item.apiName || chanName);
+    return `<div class="card top10" data-uid="${uid}">
+      <span class="big-rank">${idx + 1}</span>
+      <div class="card-thumb">
+        <span class="top10-toplabel">TOP 10</span>
+        <img class="card-img" src="${esc(item.poster)}" alt="${esc(item.name)}" loading="lazy" onerror="this.classList.add('img-broken')">
+        <div class="card-shade"></div>
+        <div class="card-title-strip"><div class="card-item-name">${esc(item.name)}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    <section class="row">
+      <div class="row-head">
+        <h2 class="row-title">Bugünün Top 10 Listesi</h2>
+        <span class="row-explore">${esc(chanName)}</span>
+      </div>
+      <div class="row-body">
+        <button class="row-arrow left"><svg viewBox="0 0 24 24"><path d="M15.4 4.6 8 12l7.4 7.4 1.4-1.4-6-6 6-6z"/></svg></button>
+        <div class="row-track">${cards}</div>
+        <button class="row-arrow right"><svg viewBox="0 0 24 24"><path d="M8.6 4.6 7.2 6l6 6-6 6 1.4 1.4L16 12z"/></svg></button>
+      </div>
+    </section>`;
+}
+
 /* Gerçek SearchResponse kartı */
-function realCard(item, providerName) {
+function realCard(item, providerName, opts = {}) {
   const uid = registerItem(item, providerName);
   const poster = item.poster || '';
+  const rmBtn = opts.removableHistory
+    ? `<button class="card-rm-hist" data-rmhist="${esc(item.url)}" title="İzlemeye Devam Et listesinden kaldır">✕</button>`
+    : '';
   return `<div class="card" data-uid="${uid}">
     <div class="card-thumb">
+      ${rmBtn}
       ${poster
         ? `<img class="card-img" src="${esc(poster)}" alt="${esc(item.name)}" loading="lazy" onerror="this.classList.add('img-broken')">`
         : `<div class="card-img card-noimg"><span>${esc(item.name)}</span></div>`}
@@ -345,6 +410,13 @@ function bindCardEvents(root) {
     $('.left', row).addEventListener('click', () => track.scrollBy({ left: -track.clientWidth * 0.85 }));
     $('.right', row).addEventListener('click', () => track.scrollBy({ left: track.clientWidth * 0.85 }));
   });
+  $$('[data-rmhist]', root).forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    hidePreview();
+    CS.removeHistory(btn.dataset.rmhist);
+    toast('İzlemeye Devam Et listesinden kaldırıldı');
+    if (state.view === 'home') renderHome();
+  }));
   $$('.card', root).forEach((card) => card.addEventListener('click', () => {
     const reg = getReg(card.dataset.uid);
     if (reg) openItemModal(reg.item, reg.providerName);
@@ -386,6 +458,7 @@ function showPreview(card) {
         <button class="pv-add ${bm ? 'pv-added' : ''}" data-act="bm" title="${bm ? 'Yer iminden çıkar' : 'Yer imine ekle'}">
           <svg viewBox="0 0 24 24"><path d="${bm ? 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z' : 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z'}"/></svg>
         </button>
+        ${item.posPct ? `<button class="pv-like" data-act="rmhist" title="İzlemeye Devam Et listesinden kaldır"><svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}
         <button class="pv-more" data-act="more" title="Daha fazla bilgi"><svg viewBox="0 0 24 24"><path d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
       </div>
       <div class="pv-meta">
@@ -406,8 +479,14 @@ function showPreview(card) {
   $$('[data-act]', pv).forEach((b) => b.addEventListener('click', (ev) => {
     ev.stopPropagation();
     const act = b.dataset.act;
-    if (act === 'play') { hidePreview(); playItem(item); }
+    if (act === 'play') { hidePreview(); heroPlay(item); }
     if (act === 'more') { hidePreview(); openItemModal(item, reg.providerName); }
+    if (act === 'rmhist') {
+      hidePreview();
+      CS.removeHistory(item.url);
+      toast('İzlemeye Devam Et listesinden kaldırıldı');
+      if (state.view === 'home') renderHome();
+    }
     if (act === 'bm') {
       const added = CS.toggleBookmark(item);
       b.classList.toggle('pv-added', added);
@@ -467,9 +546,22 @@ async function openItemModal(item, providerName) {
   $('[data-play]', m).addEventListener('click', (ev) => {
     const dataUrl = ev.currentTarget.dataset.playdata;
     if (dataUrl) { closeModal(); playEpisode(item, dataUrl); return; }
-    // Anime vb.: bölümler varsa ilk bölümden oynat
+    // Dizi/Anime: bölümler varsa ilk (veya kayıtlı) bölümden oynat
+    if (item.__episodes?.length) {
+      const hist = CS.getHistory().find((x) => x.url === item.url);
+      let idx = 0;
+      if (hist?.episodeData) {
+        const found = item.__episodes.findIndex((e) => e.data === hist.episodeData);
+        if (found >= 0) idx = found;
+      }
+      const ep = item.__episodes[idx];
+      const label = `${ep.season ? 'S' + ep.season + ':' : ''}B${ep.episode ?? (idx + 1)} ${ep.name || ''}`.trim();
+      closeModal();
+      playEpisode(item, ep.data, label, item.__episodes, idx);
+      return;
+    }
     const firstEp = document.querySelector('#modal .md-ep[data-epdata]');
-    if (firstEp?.dataset.epdata) { closeModal(); playEpisode(item, firstEp.dataset.epdata); return; }
+    if (firstEp?.dataset.epdata) { closeModal(); playEpisode(item, firstEp.dataset.epdata, firstEp.dataset.eplabel); return; }
     closeModal(); playItem(item);
   });
   $('[data-bm]', m).addEventListener('click', (e) => {
@@ -487,33 +579,60 @@ async function openItemModal(item, providerName) {
     st.textContent = 'detaylar alındı ✓';
     desc.textContent = det.desc || 'Bu içerik için açıklama sağlanmadı.';
     if (det.creator) { const f = $('.md-facts', m); f.insertAdjacentHTML('afterbegin', `<div><span class="fl">Yapımcı:</span> <span class="fv">${esc(det.creator)}</span></div>`); }
-    // Gerçek bölümler (JVM köprüsünden) — Netflix tarzı kapaklı liste
+    // Gerçek bölümler (JVM köprüsünden) — Sezon seçicili Netflix tarzı kapaklı liste
     if (det.episodes?.length) {
-      const epsHtml = det.episodes.slice(0, 60).map((e) => {
-        const label = `${e.season ? 'S' + e.season + ':' : ''}B${e.episode ?? '?'} ${e.name || ''}`.trim();
-        const thumb = e.poster || item.poster || '';
-        return `
-        <div class="md-ep" data-epdata="${esc(e.data || '')}" data-eplabel="${esc(label)}">
-          <div class="md-ep-thumb">
-            ${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy">` : '<div class="ep-noimg"></div>'}
-            <span class="ep-num">${e.episode ?? '•'}</span>
-            <div class="ep-play"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg></div>
-          </div>
-          <div class="md-ep-info">
-            <div class="md-ep-row"><b>${esc(e.name || `Bölüm ${e.episode ?? ''}`)}${e.season ? ` · S${e.season}` : ''}</b></div>
-            ${e.description ? `<p class="md-ep-desc">${esc(e.description).slice(0, 160)}</p>` : ''}
-          </div>
-        </div>`;
-      }).join('');
+      item.__episodes = det.episodes;
+      const seasonsMap = new Map();
+      det.episodes.forEach((e, globalIdx) => {
+        const sNum = e.season || 1;
+        if (!seasonsMap.has(sNum)) seasonsMap.set(sNum, []);
+        seasonsMap.get(sNum).push({ e, globalIdx });
+      });
+      const seasonNums = [...seasonsMap.keys()].sort((a, b) => a - b);
+      const seasonSelectHtml = seasonNums.length > 1
+        ? `<select class="md-season-select" id="md-season-select">
+            ${seasonNums.map((s) => `<option value="${s}">${s}. Sezon (${seasonsMap.get(s).length} bölüm)</option>`).join('')}
+           </select>`
+        : '';
+
       const bodyEl = $('.md-body', m);
       bodyEl.insertAdjacentHTML('afterend', `
         <div class="md-eps-wrap">
-          <h3 class="md-sub">Bölümler <span class="cs-pill">${det.episodes.length} bölüm</span></h3>
-          <div class="md-eps md-eps-thumbs">${epsHtml}</div>
+          <div class="md-eps-header">
+            <h3 class="md-sub">Bölümler <span class="cs-pill">${det.episodes.length} bölüm</span></h3>
+            ${seasonSelectHtml}
+          </div>
+          <div class="md-eps md-eps-thumbs" id="md-eps-list"></div>
         </div>`);
-      $$('[data-epdata]', m).forEach((el) => el.addEventListener('click', () => {
-        if (el.dataset.epdata) playEpisode(item, el.dataset.epdata, el.dataset.eplabel);
-      }));
+
+      const renderSeasonEps = (sNum) => {
+        const list = seasonsMap.get(+sNum) || [];
+        const epsContainer = $('#md-eps-list', m);
+        epsContainer.innerHTML = list.map(({ e, globalIdx }) => {
+          const epNum = e.episode ?? (globalIdx + 1);
+          const label = `${e.season ? 'S' + e.season + ':' : ''}B${epNum} ${e.name || ''}`.trim();
+          const thumb = e.poster || item.poster || '';
+          return `
+          <div class="md-ep" data-epdata="${esc(e.data || '')}" data-eplabel="${esc(label)}" data-epidx="${globalIdx}">
+            <div class="md-ep-thumb">
+              ${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy">` : '<div class="ep-noimg"></div>'}
+              <span class="ep-num">${epNum}</span>
+              <div class="ep-play"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg></div>
+            </div>
+            <div class="md-ep-info">
+              <div class="md-ep-row"><b>${esc(e.name || `Bölüm ${epNum}`)}${e.season ? ` · S${e.season}` : ''}</b></div>
+              ${e.description ? `<p class="md-ep-desc">${esc(e.description).slice(0, 160)}</p>` : ''}
+            </div>
+          </div>`;
+        }).join('');
+        $$('[data-epdata]', epsContainer).forEach((el) => el.addEventListener('click', () => {
+          if (el.dataset.epdata) playEpisode(item, el.dataset.epdata, el.dataset.eplabel, det.episodes, +el.dataset.epidx);
+        }));
+      };
+
+      renderSeasonEps(seasonNums[0]);
+      const selEl = $('#md-season-select', m);
+      if (selEl) selEl.addEventListener('change', (ev) => renderSeasonEps(ev.target.value));
     }
     // Filmse: Oynat gerçek akışı çözsün
     if (det.dataUrl) {
@@ -526,6 +645,38 @@ async function openItemModal(item, providerName) {
     st.textContent = 'detay alınamadı';
     desc.textContent = 'Bu sağlayıcının içeriği şu an erişilemiyor.';
   }
+
+  /* Benzer İçerikler — aynı türden veya aktif kanaldan 6 öneri */
+  const allItems = [...new Map((state.homeCache.rows || []).flatMap((r) => r.items).filter((i) => i.url !== item.url && i.poster).map((i) => [i.url, i])).values()];
+  const sameType = allItems.filter((i) => i.type === item.type);
+  const simPool = (sameType.length >= 3 ? sameType : allItems).slice(0, 6);
+  if (simPool.length) {
+    const simHtml = simPool.map((s) => {
+      const uid = registerItem(s, s.apiName || providerName);
+      return `<div class="sim-card" data-simuid="${uid}">
+        <div class="sim-thumb">
+          <img src="${esc(s.poster)}" alt="${esc(s.name)}" loading="lazy" onerror="this.style.display='none'">
+        </div>
+        <div class="sim-body">
+          <div class="sim-title">${esc(s.name)}</div>
+          <div class="sim-meta">
+            <span class="match">${esc(s.apiName || providerName || '')}</span>
+            <span>${esc(typeLabel(s.type))}</span>
+            ${s.year ? `<span>${esc(s.year)}</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    m.insertAdjacentHTML('beforeend', `
+      <div class="md-sim-wrap">
+        <h3 class="md-sub">Benzer İçerikler</h3>
+        <div class="md-similar">${simHtml}</div>
+      </div>`);
+    $$('[data-simuid]', m).forEach((el) => el.addEventListener('click', () => {
+      const reg = getReg(el.dataset.simuid);
+      if (reg) openItemModal(reg.item, reg.providerName);
+    }));
+  }
 }
 
 function closeModal() {
@@ -537,7 +688,11 @@ $('#modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'moda
 /* ============================================================
    OYNATICI — Netflix tarzı, canlı + dizi/film desteği
    ============================================================ */
-const player = { idleTimer: null, item: null, links: [], linkIndex: 0, live: false, embed: false, subtitles: [], audioTracks: [], resumeT: 0, lastProgSave: 0, currentData: null };
+const player = {
+  idleTimer: null, item: null, links: [], linkIndex: 0, live: false, embed: false,
+  subtitles: [], audioTracks: [], resumeT: 0, lastProgSave: 0, currentData: null,
+  episodes: [], epIndex: -1, introSkipped: false, nextDismissed: false, subOffset: 0,
+};
 
 const fmtTime = (s) => {
   s = Math.max(0, Math.floor(s || 0));
@@ -567,8 +722,17 @@ function poolLinks() {
 }
 
 /* Sağlayıcıdan gerçek oynatma bağlantılarını çözüp oynat */
-async function playEpisode(item, data, label = '') {
+async function playEpisode(item, data, label = '', episodes = null, epIndex = -1) {
   player.currentData = data;
+  player.episodes = episodes || item?.__episodes || [];
+  player.epIndex = epIndex >= 0 ? epIndex : player.episodes.findIndex((e) => e.data === data);
+  player.introSkipped = false;
+  player.nextDismissed = false;
+  player.subOffset = 0;
+  $('#p-skip-intro')?.classList.add('hidden');
+  $('#p-next-card')?.classList.add('hidden');
+  $('#eps-drawer')?.classList.add('hidden');
+
   const repoUrl = state.homeCache.repo?.url || CS.getActiveRepo()?.url;
   toast('Oynatma bağlantıları çözülüyor…');
   try {
@@ -595,6 +759,8 @@ async function playEpisode(item, data, label = '') {
     player.links = pool;
     closeModal();
     openPlayerShell(item, { live, label });
+    populateEpisodesDrawer();
+    populateSpeedMenu();
     populateQualityMenu(0);
     populateSrcMenu(pool[0]?.url || null);
     populateAudioMenu();
@@ -609,6 +775,72 @@ async function playEpisode(item, data, label = '') {
     toast('Hiçbir bağlantı oynatılamadı');
     closePlayer();
   } catch { toast('Bağlantılar çözülemedi'); }
+}
+
+/* Oynatıcı içi Bölüm Çekmecesi ve Sonraki Bölüm kontrolü */
+function populateEpisodesDrawer() {
+  const eps = player.episodes || [];
+  const hasEps = eps.length > 1;
+  const hasNext = hasEps && player.epIndex >= 0 && player.epIndex + 1 < eps.length;
+  $('#p-eps-btn')?.classList.toggle('hidden', !hasEps);
+  $('#p-next')?.classList.toggle('hidden', !hasNext);
+  const listEl = $('#eps-drawer-list');
+  if (!listEl || !hasEps) return;
+  $('#eps-drawer-title').textContent = `${player.item?.name || 'Bölümler'} (${eps.length})`;
+  listEl.innerHTML = eps.map((e, i) => {
+    const epNum = e.episode ?? (i + 1);
+    const title = `${e.season ? 'S' + e.season + ':' : ''}B${epNum} · ${e.name || ('Bölüm ' + epNum)}`;
+    const thumb = e.poster || player.item?.poster || '';
+    return `<div class="eps-item ${i === player.epIndex ? 'current' : ''}" data-epidx="${i}">
+      ${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy">` : ''}
+      <div class="ei-body">
+        <div class="ei-t">${esc(title)}</div>
+        ${e.description ? `<div class="ei-d">${esc(e.description)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  $$('.eps-item[data-epidx]', listEl).forEach((el) => el.addEventListener('click', () => {
+    const idx = +el.dataset.epidx;
+    const ep = eps[idx];
+    if (!ep?.data) return;
+    const epNum = ep.episode ?? (idx + 1);
+    const lbl = `${ep.season ? 'S' + ep.season + ':' : ''}B${epNum} ${ep.name || ''}`.trim();
+    $('#eps-drawer').classList.add('hidden');
+    playEpisode(player.item, ep.data, lbl, eps, idx);
+  }));
+}
+
+function playNextEpisode() {
+  const eps = player.episodes || [];
+  if (player.epIndex < 0 || player.epIndex + 1 >= eps.length) return;
+  const nextIdx = player.epIndex + 1;
+  const nextEp = eps[nextIdx];
+  if (!nextEp?.data) return;
+  const epNum = nextEp.episode ?? (nextIdx + 1);
+  const lbl = `${nextEp.season ? 'S' + nextEp.season + ':' : ''}B${epNum} ${nextEp.name || ''}`.trim();
+  playEpisode(player.item, nextEp.data, lbl, eps, nextIdx);
+}
+
+/* Oynatma hızı menüsü (0.5x – 1.5x) */
+function populateSpeedMenu() {
+  const v = $('#video');
+  const menu = $('#p-speed-menu');
+  const btn = $('#p-speed');
+  if (!menu || !btn) return;
+  const rates = [0.5, 0.75, 1, 1.25, 1.5];
+  const cur = v.playbackRate || 1;
+  btn.textContent = cur + 'x';
+  menu.innerHTML = `<div class="p-menu-title">Oynatma Hızı</div>` + rates.map((r) =>
+    `<button class="p-opt ${r === cur ? 'active' : ''}" data-rate="${r}">${r === 1 ? '1x (Normal)' : r + 'x'}</button>`
+  ).join('');
+  $$('[data-rate]', menu).forEach((b) => b.addEventListener('click', () => {
+    const rate = +b.dataset.rate;
+    v.playbackRate = rate;
+    btn.textContent = rate + 'x';
+    menu.classList.add('hidden');
+    populateSpeedMenu();
+    toast(`Oynatma hızı: ${rate}x`);
+  }));
 }
 
 /* Ses menüsü — dublaj / orijinal seçenekleri */
@@ -667,11 +899,31 @@ function populateSrcMenu(currentUrl) {
     return `<button class="p-opt ${active ? 'active' : ''}" data-src="${g.bestIdx}">${esc(g.tag)} · ${esc(g.source)}${q}</button>`;
   }).join('') : '';
 
-  // Altyazı dosyaları (CloudStream subtitle callback'leri)
+  // Altyazı dosyaları (CloudStream subtitle callback'leri) + Boyut ve Senkron ayarı
   if (subs.length) {
+    const curSubSize = playerPrefs.get().subSize || 'md';
     menuHtml += `<div class="p-menu-title p-sub-title">Altyazı</div>`;
     menuHtml += subs.map((s, i) =>
       `<button class="p-opt p-sub" data-sub="${i}">${esc(s.source || ('Altyazı ' + (i + 1)))}</button>`).join('');
+    menuHtml += `
+      <div class="p-sub-controls">
+        <div class="p-sub-ctrl-row">
+          <span>Boyut</span>
+          <div class="p-sub-btns">
+            <button class="p-sub-mini ${curSubSize === 'sm' ? 'active' : ''}" data-subsize="sm">Küçük</button>
+            <button class="p-sub-mini ${curSubSize === 'md' ? 'active' : ''}" data-subsize="md">Orta</button>
+            <button class="p-sub-mini ${curSubSize === 'lg' ? 'active' : ''}" data-subsize="lg">Büyük</button>
+          </div>
+        </div>
+        <div class="p-sub-ctrl-row">
+          <span>Senkron (${player.subOffset >= 0 ? '+' : ''}${player.subOffset.toFixed(1)}sn)</span>
+          <div class="p-sub-btns">
+            <button class="p-sub-mini" data-subshift="-0.5">-0.5s</button>
+            <button class="p-sub-mini" data-subshift="0">Sıfırla</button>
+            <button class="p-sub-mini" data-subshift="0.5">+0.5s</button>
+          </div>
+        </div>
+      </div>`;
   }
 
   menu.innerHTML = menuHtml;
@@ -686,6 +938,40 @@ function populateSrcMenu(currentUrl) {
     menu.classList.add('hidden');
     applySubtitle(+b.dataset.sub);
   }));
+  $$('[data-subsize]', menu).forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const sz = b.dataset.subsize;
+    playerPrefs.set('subSize', sz);
+    applySubSizeClass();
+    populateSrcMenu(currentUrl);
+  }));
+  $$('[data-subshift]', menu).forEach((b) => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const val = +b.dataset.subshift;
+    shiftSubtitleTiming(val === 0 ? -player.subOffset : val);
+    populateSrcMenu(currentUrl);
+  }));
+}
+
+function applySubSizeClass() {
+  const o = $('#p-sub-overlay');
+  if (!o) return;
+  const sz = playerPrefs.get().subSize || 'md';
+  o.classList.toggle('sub-sm', sz === 'sm');
+  o.classList.toggle('sub-lg', sz === 'lg');
+}
+
+function shiftSubtitleTiming(deltaSec) {
+  if (!deltaSec) return;
+  const v = $('#video');
+  const tt = v.textTracks?.[v.textTracks.length - 1];
+  if (!tt || !tt.cues) { toast('Önce bir altyazı seçin'); return; }
+  [...tt.cues].forEach((c) => {
+    c.startTime = Math.max(0, c.startTime + deltaSec);
+    c.endTime = Math.max(0.1, c.endTime + deltaSec);
+  });
+  player.subOffset = +(player.subOffset + deltaSec).toFixed(1);
+  toast(`Altyazı senkronu: ${player.subOffset >= 0 ? '+' : ''}${player.subOffset} sn`);
 }
 
 /* Altyazı tracklerini ve overlay'i temizle */
@@ -934,6 +1220,9 @@ function closePlayer() {
   const v = $('#video');
   saveProgress(true); // kapanmadan önce izleme konumunu kaydet
   player.session = (player.session || 0) + 1; // bekleyen oynatma denemelerini iptal et
+  if (document.pictureInPictureElement) {
+    try { document.exitPictureInPicture(); } catch {}
+  }
   v.pause();
   // WebView2/Chrome'da MSE kaynaklı takılmayı önler: önce medyayı ayır, sonra yok et
   try { window.__hls?.detachMedia?.(); } catch {}
@@ -943,6 +1232,9 @@ function closePlayer() {
   try { v.removeAttribute('src'); v.load(); } catch {}
   v.controls = false;
   clearSubtitles();
+  $('#p-skip-intro')?.classList.add('hidden');
+  $('#p-next-card')?.classList.add('hidden');
+  $('#eps-drawer')?.classList.add('hidden');
   $('#p-iframe-wrap').classList.remove('hidden');
   $('#p-iframe-wrap').innerHTML = '';
   $('#player').classList.add('hidden', 'idle');
@@ -953,6 +1245,8 @@ function closePlayer() {
   player.links = [];
   player.allLinks = [];
   player.subtitles = [];
+  player.episodes = [];
+  player.epIndex = -1;
   if (state.view === 'home') renderHome();
 }
 
@@ -980,6 +1274,45 @@ function updateSeekUI() {
     $('#p-buffer').style.width = (v.buffered.end(v.buffered.length - 1) / dur * 100) + '%';
   }
   $('#p-time').textContent = dur ? `-${fmtTime(dur - cur)}` : '';
+
+  /* İntroyu Atla (5 sn – 110 sn arası) */
+  const skipBtn = $('#p-skip-intro');
+  if (skipBtn) {
+    const showSkip = !player.live && !player.embed && dur > 180 && cur >= 5 && cur <= 110 && !player.introSkipped;
+    skipBtn.classList.toggle('hidden', !showSkip);
+  }
+
+  /* Sıradaki Bölüm Geri Sayım Kartı (son 15 sn) */
+  const nextCard = $('#p-next-card');
+  const eps = player.episodes || [];
+  const hasNext = !player.live && !player.embed && !player.nextDismissed && eps.length > 1 && player.epIndex >= 0 && player.epIndex + 1 < eps.length;
+  if (nextCard) {
+    const rem = Math.ceil(dur - cur);
+    if (hasNext && dur > 60 && rem <= 15 && rem > 0) {
+      const nextEp = eps[player.epIndex + 1];
+      const epNum = nextEp.episode ?? (player.epIndex + 2);
+      const thumb = nextEp.poster || player.item?.poster || '';
+      const autoOn = playerPrefs.get().autoNext !== false;
+      nextCard.classList.remove('hidden');
+      nextCard.innerHTML = `
+        ${thumb ? `<div class="ne-thumb"><img src="${esc(thumb)}" alt=""></div>` : ''}
+        <div class="ne-info">
+          <div class="ne-label">${autoOn ? `Sıradaki bölüm · ${rem} sn` : 'Sıradaki bölüm'}</div>
+          <div class="ne-title">${esc(nextEp.name || ('Bölüm ' + epNum))}</div>
+          <div style="display:flex;gap:8px;margin-top:auto">
+            <button class="ne-play" data-ne-play>▶ Şimdi Oynat</button>
+            <button class="cs-mini" data-ne-close title="Gizle">✕</button>
+          </div>
+        </div>`;
+      $('[data-ne-play]', nextCard)?.addEventListener('click', () => playNextEpisode());
+      $('[data-ne-close]', nextCard)?.addEventListener('click', () => {
+        player.nextDismissed = true;
+        nextCard.classList.add('hidden');
+      });
+    } else {
+      nextCard.classList.add('hidden');
+    }
+  }
 }
 
 /* İzleme konumunu geçmişe kaydet (5 saniyede bir; force ile anında) */
@@ -999,6 +1332,7 @@ function bindPlayer() {
   const v = $('#video');
   const p = $('#player');
 
+  applySubSizeClass();
   $('#p-back').addEventListener('click', closePlayer);
   p.addEventListener('mousemove', wakeControls);
 
@@ -1013,6 +1347,42 @@ function bindPlayer() {
   v.addEventListener('click', toggle);
   v.addEventListener('pause', () => setPlayIcon(false));
   v.addEventListener('play', () => setPlayIcon(true));
+
+  /* Bölüm bittiğinde otomatik sıradaki bölüme geç */
+  v.addEventListener('ended', () => {
+    const eps = player.episodes || [];
+    if (playerPrefs.get().autoNext !== false && eps.length > 1 && player.epIndex >= 0 && player.epIndex + 1 < eps.length) {
+      toast('Sıradaki bölüm başlatılıyor…');
+      playNextEpisode();
+    }
+  });
+
+  /* İntroyu Atla */
+  $('#p-skip-intro')?.addEventListener('click', () => {
+    player.introSkipped = true;
+    $('#p-skip-intro').classList.add('hidden');
+    if (v.duration) {
+      v.currentTime = Math.min(v.duration - 5, v.currentTime + 85);
+      toast('İntro atlandı (+85 sn)');
+    }
+  });
+
+  /* Sonraki Bölüm & Bölüm Çekmecesi */
+  $('#p-next')?.addEventListener('click', () => playNextEpisode());
+  $('#p-eps-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#eps-drawer')?.classList.toggle('hidden');
+  });
+  $('#eps-close')?.addEventListener('click', () => $('#eps-drawer')?.classList.add('hidden'));
+
+  /* Resim İçinde Resim (PiP) */
+  const togglePiP = async () => {
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else if (v.requestPictureInPicture) await v.requestPictureInPicture();
+    } catch { toast('Resim içinde resim bu akışta kullanılamıyor'); }
+  };
+  $('#p-pip')?.addEventListener('click', togglePiP);
 
   /* İlerleme (yalnız VOD) */
   v.addEventListener('timeupdate', updateSeekUI);
@@ -1069,6 +1439,12 @@ function bindPlayer() {
   $('#p-mute').addEventListener('click', toggleMute);
   $('#p-vol').addEventListener('input', (e) => { v.volume = e.target.value / 100; v.muted = false; volIcon(); });
 
+  /* Hız menüsü */
+  $('#p-speed')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    populateSpeedMenu();
+    $('#p-speed-menu').classList.toggle('hidden');
+  });
   /* Kalite menüsü */
   $('#p-quality').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1085,6 +1461,7 @@ function bindPlayer() {
     $('#p-tag-menu').classList.toggle('hidden');
   });
   document.addEventListener('click', (e) => {
+    if (!e.target.closest('#p-speed-wrap')) $('#p-speed-menu')?.classList.add('hidden');
     if (!e.target.closest('#p-quality-wrap')) $('#p-quality-menu').classList.add('hidden');
     if (!e.target.closest('#p-tag-wrap')) $('#p-tag-menu').classList.add('hidden');
     if (!e.target.closest('#p-audio-wrap')) $('#p-audio-menu').classList.add('hidden');
@@ -1110,8 +1487,13 @@ function bindPlayer() {
         case 'ArrowRight': if (!player.live && v.duration) v.currentTime = Math.min(v.duration - 0.5, v.currentTime + 10); wakeControls(); break;
         case 'ArrowUp': e.preventDefault(); v.volume = Math.min(1, v.volume + 0.1); volIcon(); break;
         case 'ArrowDown': e.preventDefault(); v.volume = Math.max(0, v.volume - 0.1); volIcon(); break;
-        case 'm': toggleMute(); break;
-        case 'f': toggleFullscreen(); break;
+        case 'm': case 'M': toggleMute(); break;
+        case 'f': case 'F': toggleFullscreen(); break;
+        case 'n': case 'N': playNextEpisode(); break;
+        case 'p': case 'P': togglePiP(); break;
+        case 's': case 'S':
+          if (!$('#p-skip-intro')?.classList.contains('hidden')) $('#p-skip-intro').click();
+          break;
         case 'Escape': if (!document.fullscreenElement) closePlayer(); break;
       }
       return;
@@ -1147,22 +1529,33 @@ function bindNavbar() {
       </div></div>`
     : `<div class="notif-item"><div class="ni-body"><span class="ni-t">Depo yok</span><span class="ni-s">İçerik için depo ekle</span></div></div>`;
 
-  // Arama
-  const sbox = $('#search-box'), sinput = $('#search-input');
+  // Bana Sürpriz Yap (Navbar)
+  $('#surprise-btn')?.addEventListener('click', () => surprisePlay());
+
+  // Arama + Tüm Kanallar kapsam seçici
+  const sbox = $('#search-box'), sinput = $('#search-input'), sallBtn = $('#search-all-toggle');
   $('#search-toggle').addEventListener('click', () => {
     sbox.classList.toggle('open');
     if (sbox.classList.contains('open')) sinput.focus();
     else { sinput.value = ''; sinput.dispatchEvent(new Event('input')); }
   });
   let searchSeq = 0;
-  sinput.addEventListener('input', async () => {
+  const runSearch = async () => {
     const q = sinput.value.trim();
     if (!q) { restoreHome(); return; }
     const seq = ++searchSeq;
-    const res = await CS.getSearch(CS.getActiveRepo()?.url, q).catch(() => []);
+    const allChans = !!sallBtn?.classList.contains('active');
+    const res = await CS.getSearch(CS.getActiveRepo()?.url, q, allChans).catch(() => []);
     if (seq !== searchSeq) return; // eski sonuç
     const reg = res.map((it) => registerItem(it, it.apiName));
-    showGridView(`"${q}" — ${res.length} sonuç`, res, reg);
+    const scopeLabel = allChans ? 'tüm kanallar' : (CS.getActiveProvider(CS.getActiveRepo()?.url)?.name || 'aktif kanal');
+    showGridView(`"${q}" (${scopeLabel}) — ${res.length} sonuç`, res, reg);
+  };
+  sinput.addEventListener('input', runSearch);
+  sallBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sallBtn.classList.toggle('active');
+    if (sinput.value.trim()) runSearch();
   });
 
   // Görünümler
