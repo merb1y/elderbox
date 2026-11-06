@@ -1467,3 +1467,225 @@ body.desktop-shell .win-controls {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px;
 }
 .cs-rg-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+
+/* ============================================================
+   ANDROID & ANDROID TV (60 FPS PERFORMANS + KUMANDA D-PAD + MOBİL)
+   ============================================================ */
+
+/* Android / TV ortak: Masaüstü pencere düğmelerini gizle */
+body.android-mode #win-controls,
+body.android-mode #titlebar-drag,
+body.tv-mode #win-controls,
+body.tv-mode #titlebar-drag {
+  display: none !important;
+}
+body.android-mode #navbar,
+body.tv-mode #navbar {
+  padding-right: 4% !important;
+}
+
+/* Android TV 60 FPS Performans Modu:
+   Düşük GPU'lu TV Box cihazlarda kasmaya sebep olan ağır blur/filtreleri
+   ve sürekli arka plan animasyonlarını devre dışı bırakır. */
+body.tv-mode *,
+body.tv-mode *::before,
+body.tv-mode *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.tv-mode #hero-bg {
+  animation: none !important;
+  transform: none !important;
+}
+body.tv-mode #navbar.scrolled {
+  background: rgba(12, 12, 14, .98) !important;
+}
+body.tv-mode .p-menu,
+body.tv-mode .eps-drawer,
+body.tv-mode .next-ep,
+body.tv-mode #hover-card,
+body.tv-mode #modal {
+  background: #141418 !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .85) !important;
+}
+body.tv-mode #hover-card {
+  display: none !important; /* TV'de fare hover önizlemesi yerine doğrudan kart odaklaması kullanılır */
+}
+
+/* Kumanda (D-Pad) Odak Halkası — TV ve Klavye Navigasyonu */
+.tv-focus,
+body.tv-mode :focus-visible {
+  outline: 3px solid #ffffff !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 5px rgba(229, 9, 20, .8), 0 10px 26px rgba(0, 0, 0, .85) !important;
+  z-index: 30 !important;
+}
+.card.tv-focus {
+  transform: translateY(-4px) scale(1.06) !important;
+  z-index: 35 !important;
+}
+.snav-btn.tv-focus,
+.btn.tv-focus,
+.icon-btn.tv-focus,
+.p-btn.tv-focus,
+.cs-repo-tab.tv-focus,
+.ep-item.tv-focus,
+.md-ep.tv-focus {
+  transform: scale(1.06) !important;
+}
+
+/* Mobil Telefon & Küçük Tablet Responsive Tasarım (<768px) */
+@media (max-width: 768px) {
+  :root {
+    --rail-w: 0px;
+    --card-w: 148px;
+    --nav-h: 58px;
+  }
+  body {
+    padding-bottom: 64px;
+  }
+  /* Sol dikey menüyü mobilde alt sabit gezinme çubuğuna dönüştür */
+  #sidenav {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 60px;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 0 8px;
+    border-right: none;
+    border-top: 1px solid rgba(255, 255, 255, .1);
+    background: rgba(12, 12, 14, .98);
+    z-index: 95;
+  }
+  .snav-btn {
+    width: 46px;
+    height: 44px;
+  }
+  .snav-btn.active::before {
+    left: 25%;
+    right: 25%;
+    top: 0;
+    bottom: auto;
+    width: auto;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+  }
+  #navbar {
+    padding: 0 14px !important;
+    gap: 10px;
+  }
+  .brand {
+    font-size: 1.25rem;
+  }
+  .nav-links {
+    display: none;
+  }
+  #surprise-btn span {
+    display: none;
+  }
+  #surprise-btn {
+    padding: 6px 10px;
+  }
+  .search-box.open input {
+    width: 150px;
+  }
+  #hero {
+    height: 62vh;
+    min-height: 390px;
+  }
+  .hero-content {
+    left: 4%;
+    right: 4%;
+    bottom: 14%;
+    max-width: 92%;
+  }
+  #hero-title {
+    font-size: clamp(1.5rem, 6vw, 2.3rem);
+  }
+  #hero-desc {
+    font-size: .88rem;
+    -webkit-line-clamp: 2;
+  }
+  .hero-buttons {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .hero-buttons .btn {
+    padding: .55rem 1rem;
+    font-size: .86rem;
+  }
+  #rows {
+    margin-top: -40px;
+    padding-bottom: 30px;
+  }
+  .row-Arrow {
+    display: none !important;
+  }
+  .row-track {
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+  }
+  .row-track::-webkit-scrollbar {
+    display: none;
+  }
+  #modal-overlay {
+    padding: 0;
+  }
+  #modal {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+  }
+  .md-hero {
+    height: 250px;
+  }
+  .md-body {
+    padding: 16px;
+  }
+  .md-ep {
+    grid-template-columns: 28px 110px 1fr;
+    gap: 10px;
+  }
+  .md-ep-thumb {
+    width: 110px;
+    height: 62px;
+  }
+  .cs-page {
+    padding: calc(var(--nav-h) + 14px) 14px 80px;
+  }
+  .cs-layout {
+    grid-template-columns: 1fr;
+  }
+  .cs-snav {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 8px;
+  }
+  .cs-snav-item {
+    white-space: nowrap;
+  }
+  .eps-drawer {
+    width: 100%;
+  }
+  .p-controls {
+    padding: 12px 14px 18px;
+  }
+  .p-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .p-title {
+    width: 100%;
+    order: -1;
+    text-align: left;
+    margin-bottom: 4px;
+  }
+}

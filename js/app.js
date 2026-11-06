@@ -1114,6 +1114,7 @@ function openPlayerShell(item, opts = {}) {
   p.classList.toggle('live', player.live);
   p.classList.toggle('embed', player.embed);
   document.body.classList.add('no-scroll');
+  try { window.ElderboxAndroid?.setPlayerFullscreen?.(true); } catch {}
   $('#p-iframe-wrap').classList.add('hidden');
   $('#p-iframe-wrap').innerHTML = '';
   const v = $('#video');
@@ -1263,6 +1264,7 @@ function closePlayer() {
   $('#p-iframe-wrap').innerHTML = '';
   $('#player').classList.add('hidden', 'idle');
   document.body.classList.remove('no-scroll');
+  try { window.ElderboxAndroid?.setPlayerFullscreen?.(false); } catch {}
   player.item = null;
   player.resumeT = 0;
   player.currentData = null;
@@ -2183,3 +2185,220 @@ bindCustomScrollbar();
 
 if (window.pywebview !== undefined) bindWindowControls();
 else window.addEventListener('pywebviewready', bindWindowControls);
+
+/* ============================================================
+   ANDROID & ANDROID TV (60 FPS TV MODU + UZAKTAN KUMANDA D-PAD)
+   ============================================================ */
+function initPlatformAndDpad() {
+  const ua = navigator.userAgent || '';
+  const isAndroid = Boolean(window.ElderboxAndroid) || /Android/i.test(ua);
+  let isTv = false;
+  try { isTv = Boolean(window.ElderboxAndroid?.isTv?.()); } catch {}
+  if (!isTv && (/\b(TV|AFT|BRAVIA|MiBOX|Shield|Leanback|GoogleTV|Chromecast|SmartTV)\b/i.test(ua) || location.search.includes('tv=1'))) {
+    isTv = true;
+  }
+  if (isAndroid) document.body.classList.add('android-mode');
+  if (isTv) document.body.classList.add('tv-mode');
+
+  /* Android Geri Tuşu & Kumanda Back Yöneticisi */
+  window.__elderboxBack = function() {
+    const confirmOv = $('#confirm-overlay');
+    if (confirmOv && !confirmOv.classList.contains('hidden')) {
+      $('#confirm-cancel')?.click();
+      return true;
+    }
+    const p = $('#player');
+    if (p && !p.classList.contains('hidden')) {
+      const drawer = $('#eps-drawer');
+      if (drawer && !drawer.classList.contains('hidden')) {
+        drawer.classList.add('hidden');
+        return true;
+      }
+      closePlayer();
+      return true;
+    }
+    const modalOv = $('#modal-overlay');
+    if (modalOv && !modalOv.classList.contains('hidden')) {
+      closeModal();
+      return true;
+    }
+    const sb = $('#search-box');
+    if (sb && sb.classList.contains('open')) {
+      $('#search-input').value = '';
+      sb.classList.remove('open');
+      $('#search-results')?.classList.add('hidden');
+      $('#hero')?.classList.remove('hidden');
+      $('#rows')?.classList.remove('hidden');
+      return true;
+    }
+    if (state.view && state.view !== 'home') {
+      switchView('home');
+      return true;
+    }
+    return false;
+  };
+
+  /* Uzaktan Kumanda (D-Pad) Odaklama Motoru */
+  const FOCUS_SEL = [
+    '.card',
+    '.snav-btn',
+    '.nav-links a',
+    '.btn',
+    '.icon-btn',
+    '.rp-btn',
+    '.rp-item',
+    '.md-close',
+    '.md-season-select',
+    '.md-ep',
+    '.cs-snav-item',
+    '.cs-repo-tab',
+    '.cs-btn',
+    '.cs-input',
+    '.cs-select',
+    '.p-btn',
+    '.ep-item',
+    '.ne-play',
+    '.ne-close',
+    '#confirm-ok',
+    '#confirm-cancel'
+  ].join(',');
+
+  let currentFocus = null;
+
+  function isVisible(el) {
+    if (!el || !el.isConnected) return false;
+    if (el.closest('.hidden')) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 4 && r.height > 4;
+  }
+
+  function activeScope() {
+    const confirmOv = $('#confirm-overlay');
+    if (confirmOv && !confirmOv.classList.contains('hidden')) return $('#confirm-box') || confirmOv;
+    const p = $('#player');
+    if (p && !p.classList.contains('hidden')) {
+      const drawer = $('#eps-drawer');
+      if (drawer && !drawer.classList.contains('hidden')) return drawer;
+      return p;
+    }
+    const modalOv = $('#modal-overlay');
+    if (modalOv && !modalOv.classList.contains('hidden')) return $('#modal') || modalOv;
+    return document.body;
+  }
+
+  function setTvFocus(el) {
+    if (!el) return;
+    document.querySelectorAll('.tv-focus').forEach((n) => n.classList.remove('tv-focus'));
+    currentFocus = el;
+    el.classList.add('tv-focus');
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    try { el.focus({ preventScroll: true }); } catch {}
+    try {
+      el.scrollIntoView({ behavior: isTv ? 'auto' : 'smooth', block: 'nearest', inline: 'center' });
+    } catch {}
+  }
+
+  function findNextFocus(dir) {
+    const scope = activeScope();
+    const candidates = [...scope.querySelectorAll(FOCUS_SEL)].filter(isVisible);
+    if (!candidates.length) return null;
+    if (!currentFocus || !isVisible(currentFocus) || !scope.contains(currentFocus)) {
+      return candidates[0];
+    }
+    const curRect = currentFocus.getBoundingClientRect();
+    const cx = curRect.left + curRect.width / 2;
+    const cy = curRect.top + curRect.height / 2;
+    const curRow = currentFocus.closest('.row-track, .cs-repo-tabs, .hero-buttons, #sidenav, .p-row');
+
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const el of candidates) {
+      if (el === currentFocus) continue;
+      const r = el.getBoundingClientRect();
+      const ex = r.left + r.width / 2;
+      const ey = r.top + r.height / 2;
+      const dx = ex - cx;
+      const dy = ey - cy;
+
+      if (dir === 'right' && dx <= 6) continue;
+      if (dir === 'left' && dx >= -6) continue;
+      if (dir === 'down' && dy <= 6) continue;
+      if (dir === 'up' && dy >= -6) continue;
+
+      const primary = (dir === 'left' || dir === 'right') ? Math.abs(dx) : Math.abs(dy);
+      const ortho = (dir === 'left' || dir === 'right') ? Math.abs(dy) : Math.abs(dx);
+
+      // Yatay ok tuşlarında aynı satır dışına çıkmayı ağır cezalandır
+      const sameRow = curRow && curRow === el.closest('.row-track, .cs-repo-tabs, .hero-buttons, #sidenav, .p-row');
+      if ((dir === 'left' || dir === 'right') && curRow && !sameRow && ortho > curRect.height * 0.85) {
+        continue;
+      }
+
+      const weight = (dir === 'left' || dir === 'right') ? 3.5 : 2.0;
+      const score = primary + ortho * weight - (sameRow ? 40 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    return best;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target?.tagName || '').toUpperCase();
+    const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+    if (e.key === 'Escape' || e.key === 'GoBack' || e.key === 'BrowserBack') {
+      if (inInput) {
+        e.target.blur();
+        return;
+      }
+      if (window.__elderboxBack()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+
+    // Oynatıcı açıkken ve çekmece kapalıyken ok tuşları oynatıcı tarafından yönetilir
+    const p = $('#player');
+    const drawer = $('#eps-drawer');
+    if (p && !p.classList.contains('hidden') && (!drawer || drawer.classList.contains('hidden'))) {
+      if (e.key === 'Enter' && (!currentFocus || !p.contains(currentFocus))) {
+        e.preventDefault();
+        $('#p-play')?.click();
+      }
+      return;
+    }
+
+    if (inInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
+
+    const dirMap = { ArrowRight: 'right', ArrowLeft: 'left', ArrowDown: 'down', ArrowUp: 'up' };
+    const dir = dirMap[e.key];
+    if (dir) {
+      e.preventDefault();
+      const next = findNextFocus(dir);
+      if (next) setTvFocus(next);
+      return;
+    }
+
+    if (e.key === 'Enter' && currentFocus && isVisible(currentFocus) && !inInput) {
+      e.preventDefault();
+      currentFocus.click();
+    }
+  });
+
+  // Fare hareket ettiğinde TV odak halkasını temizle (hibrit kullanım)
+  if (!isTv) {
+    document.addEventListener('pointermove', () => {
+      if (currentFocus) {
+        currentFocus.classList.remove('tv-focus');
+        currentFocus = null;
+      }
+    }, { passive: true });
+  }
+}
+initPlatformAndDpad();
