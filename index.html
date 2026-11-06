@@ -2,12 +2,12 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Elderbox</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" defer></script>
 <link rel="icon" type="image/png" href="assets/img/favicon.png">
-<link rel="stylesheet" href="css/style.css?v=28">
-<script>window.__ASSET_V = 28;</script>
+<link rel="stylesheet" href="css/style.css?v=29">
+<script>window.__ASSET_V = 29;</script>
 </head>
 <body>
 
@@ -62,6 +62,14 @@
     </div>
   </header>
 
+  <!-- MOBİL KATEGORİ FİLTRE ÇİPLERİ (yalnızca mobil uygulamada görünür) -->
+  <div id="mobile-pills" class="mobile-pills">
+    <button class="mob-pill active" data-mob-filter="all">Tümü</button>
+    <button class="mob-pill" data-mob-filter="series">Diziler</button>
+    <button class="mob-pill" data-mob-filter="movies">Filmler</button>
+    <button class="mob-pill" id="mob-pill-chan">Kanallar ▾</button>
+  </div>
+
   <!-- ANA GÖRÜNÜM ALANI -->
   <main id="main">
     <section id="hero"></section>
@@ -77,18 +85,66 @@
         <h2 class="set-title">Ayarlar</h2>
         <div class="set-layout">
           <aside class="set-side">
-            <div class="set-group">Hesap</div>
-            <button class="set-tab active" data-panel="account">Hesap Bilgileri</button>
-            <button class="set-tab" data-panel="parental">Yetişkin Kontrolü</button>
+            <div class="set-group">Görünüm</div>
+            <button class="set-tab" data-panel="layout">Görünüm Düzeni</button>
+            <div class="set-group">CloudStream</div>
+            <button class="set-tab" data-panel="deps">Depolar ve Eklentiler</button>
+            <button class="set-tab" data-panel="engine">Altyapı</button>
             <div class="set-group">Oynatıcı</div>
             <button class="set-tab" data-panel="player">Oynatıcı</button>
             <button class="set-tab" data-panel="data">Veri Kullanımı</button>
-            <div class="set-group">CloudStream</div>
-            <button class="set-tab" data-panel="engine">Altyapı</button>
-            <button class="set-tab" data-panel="deps">Depolar ve Eklentiler</button>
+            <div class="set-group">Hesap</div>
+            <button class="set-tab" data-panel="parental">Yetişkin Kontrolü</button>
+            <button class="set-tab" data-panel="account">Hesap Bilgileri</button>
           </aside>
           <div class="set-main">
-            <section class="set-panel" data-panel="account">
+            <section class="set-panel" data-panel="layout" hidden>
+              <h3 class="set-sec">Görünüm Düzeni</h3>
+              <p class="set-desc">CloudStream'deki gibi cihazına en uygun arayüz düzenini seçebilirsin. Seçimin kalıcı olarak kaydedilir ve anında uygulanır.</p>
+              <div class="layout-mode-grid" id="layout-mode-grid">
+                <button class="layout-mode-card active" data-layout-mode="auto" type="button">
+                  <div class="lm-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V14h-2v2.93A8 8 0 0 1 4.07 11H7V9H4.07A8 8 0 0 1 11 4.07V7h2V4.07A8 8 0 0 1 19.93 9H17v2h2.93A8 8 0 0 1 13 16.93z"/></svg>
+                  </div>
+                  <div class="lm-body">
+                    <b>Otomatik <span class="lm-badge" id="lm-auto-detected"></span></b>
+                    <p>Telefon, Android TV veya Emülatör/PC olduğunu otomatik algılar.</p>
+                  </div>
+                  <span class="lm-check">✓</span>
+                </button>
+                <button class="layout-mode-card" data-layout-mode="phone" type="button">
+                  <div class="lm-icon">
+                    <svg viewBox="0 0 24 24"><path d="M17 1.01 7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+                  </div>
+                  <div class="lm-body">
+                    <b>Telefon Görünümü</b>
+                    <p>Dikey posterler, alt sekme çubuğu, dokunmatik oynatıcı ve dikey ekran kilidi.</p>
+                  </div>
+                  <span class="lm-check">✓</span>
+                </button>
+                <button class="layout-mode-card" data-layout-mode="tv" type="button">
+                  <div class="lm-icon">
+                    <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 1.99-.9 1.99-2L23 5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
+                  </div>
+                  <div class="lm-body">
+                    <b>TV Görünümü</b>
+                    <p>Kumanda (D-Pad) odak halkası, büyük yazılar ve 60 FPS kasmayan performans modu.</p>
+                  </div>
+                  <span class="lm-check">✓</span>
+                </button>
+                <button class="layout-mode-card" data-layout-mode="emulator" type="button">
+                  <div class="lm-icon">
+                    <svg viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                  </div>
+                  <div class="lm-body">
+                    <b>Emülatör / Masaüstü Görünümü</b>
+                    <p>Geniş ekran yatay kartlar, üst menü ve fare/dokunmatik hibrit kontrol.</p>
+                  </div>
+                  <span class="lm-check">✓</span>
+                </button>
+              </div>
+            </section>
+            <section class="set-panel" data-panel="account" hidden>
               <h3 class="set-sec">Hesap Bilgileri</h3>
               <div class="set-card">
                 <div class="set-row">
@@ -229,6 +285,30 @@
   <footer id="footer">
     <p class="footer-copy">© 2026 Elderbox — Bağımsız bir CloudStream arayüzü. Üçüncü taraf depo ve içeriklerden sorumlu değildir.</p>
   </footer>
+
+  <!-- MOBİL ALT GEZİNME ÇUBUĞU (Netflix Mobil Uygulama Tarzı) -->
+  <nav id="mobile-tabbar" class="mobile-tabbar" aria-label="Mobil Gezinme">
+    <button class="mob-tab active" data-mob-tab="home">
+      <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      <span>Ana Sayfa</span>
+    </button>
+    <button class="mob-tab" data-mob-tab="new">
+      <svg viewBox="0 0 24 24"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>
+      <span>Yeni ve Popüler</span>
+    </button>
+    <button class="mob-tab" data-mob-tab="search">
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L21 19.5l-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+      <span>Ara</span>
+    </button>
+    <button class="mob-tab" data-mob-tab="list">
+      <svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+      <span>Listem</span>
+    </button>
+    <button class="mob-tab" data-mob-tab="deps">
+      <svg viewBox="0 0 24 24"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg>
+      <span>Depolar</span>
+    </button>
+  </nav>
 </div>
 
 <!-- ==================== HOVER ÖNİZLEME KARTI ==================== -->
@@ -246,6 +326,19 @@
   <div id="p-sub-overlay" class="hidden"></div>
   <div id="p-iframe-wrap" class="hidden"></div>
   <div id="p-tap-feedback" class="p-tap-feedback hidden"></div>
+
+  <!-- Mobil Dokunmatik Merkez Oynatıcı Kontrolleri -->
+  <div id="p-mobile-center" class="p-mobile-center">
+    <button class="pm-btn" id="pm-back10" title="10 saniye geri">
+      <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H3a8 8 0 1 0 9-8z"/></svg>
+    </button>
+    <button class="pm-btn pm-play" id="pm-play" title="Oynat / Duraklat">
+      <svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
+    </button>
+    <button class="pm-btn" id="pm-fwd10" title="10 saniye ileri">
+      <svg viewBox="0 0 24 24"><path d="M12 5V1l5 5-5 5V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/></svg>
+    </button>
+  </div>
 
   <!-- İntroyu Atla & Sıradaki Bölüm & Bölüm Çekmecesi -->
   <button class="skip-intro hidden" id="p-skip-intro">İntroyu Atla</button>
@@ -342,8 +435,8 @@
 <div class="win-resize" id="win-resize-se"></div>
 
 <script src="/state.js"></script>
-<script src="js/data.js?v=28"></script>
-<script src="js/cs-bridge.js?v=28"></script>
-<script src="js/app.js?v=28"></script>
+<script src="js/data.js?v=29"></script>
+<script src="js/cs-bridge.js?v=29"></script>
+<script src="js/app.js?v=29"></script>
 </body>
 </html>

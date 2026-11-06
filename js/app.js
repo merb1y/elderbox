@@ -52,10 +52,21 @@ function enterApp() {
 function renderRepoPicker() {
   const wrap = $('#repo-picker');
   const repos = CS.repos;
-  if (!repos.length) { wrap.innerHTML = ''; wrap.classList.add('hidden'); return; }
+  const mobChan = $('#mob-pill-chan');
+  if (!repos.length) {
+    wrap.innerHTML = '';
+    wrap.classList.add('hidden');
+    wrap.classList.remove('open');
+    if (mobChan) mobChan.style.display = 'none';
+    return;
+  }
   wrap.classList.remove('hidden');
   const active = CS.getActiveRepo();
   const prov = CS.getActiveProvider(active?.url);
+  if (mobChan) {
+    mobChan.style.display = '';
+    mobChan.textContent = (prov ? prov.name : (active?.name || 'Kanallar')) + ' ▾';
+  }
   const counts = Object.fromEntries(repos.map((r) => [r.url, CS.repoProviders(r.url).length]));
   const chans = active ? CS.repoProviders(active.url) : [];
 
@@ -89,17 +100,24 @@ function renderRepoPicker() {
       </button>
     </div>`;
 
+  $('#rp-btn', wrap)?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    wrap.classList.toggle('open');
+  });
   $$('.rp-item[data-url]', wrap).forEach((b) => b.addEventListener('click', () => {
+    wrap.classList.remove('open');
     CS.setActiveRepo(b.dataset.url);
     CS.setActiveProviderKey(null); // yeni depoda kanal yeniden seçilir
     renderHome();
   }));
   $$('.rp-item[data-prov]', wrap).forEach((b) => b.addEventListener('click', () => {
+    wrap.classList.remove('open');
     CS.setActiveProviderKey(b.dataset.prov || null);
     renderHome();
   }));
   $('[data-add]', wrap).addEventListener('click', () => {
-    $('#settings-btn').click();
+    wrap.classList.remove('open');
+    showSettingsView('deps');
   });
 
   /* Menü ekranın sağ/sol kenarına taşmasın: gereken kaydırmayı hesapla */
@@ -129,6 +147,7 @@ async function renderHome() {
   $('#cs-view').classList.add('hidden');
   $('#hero').classList.remove('hidden');
   $('#rows').classList.remove('hidden');
+  window.__syncMobileNav?.('home');
 
   let repo0 = CS.getActiveRepo();
   /* Kanal seçimi: hiçbiri seçili değilse ilk canlı kanal, o da yoksa ilk kanal seçilir.
@@ -233,7 +252,10 @@ async function renderHome() {
   }
 
   const visible = state.typeFilter
-    ? rows.map((r) => ({ ...r, items: r.items.filter((i) => i.type === state.typeFilter) })).filter((r) => r.items.length)
+    ? rows.map((r) => ({
+        ...r,
+        items: r.items.filter((i) => state.typeFilter === 'TvSeries' ? (i.type === 'TvSeries' || i.type === 'Anime') : i.type === state.typeFilter),
+      })).filter((r) => r.items.length)
     : rows;
 
   /* İzlemeye devam et — yarım bırakılan içerikler en üstte */
@@ -1285,9 +1307,12 @@ function wakeControls() {
 
 /* ---------- Oynatıcı kontrolleri ---------- */
 function setPlayIcon(playing) {
-  $('#p-play').innerHTML = playing
+  const svg = playing
     ? '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>'
     : '<svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>';
+  $('#p-play').innerHTML = svg;
+  const pmPlay = $('#pm-play');
+  if (pmPlay) pmPlay.innerHTML = svg;
 }
 
 function updateSeekUI() {
@@ -1391,7 +1416,28 @@ function bindPlayer() {
     wakeControls();
   };
   $('#p-play').addEventListener('click', toggle);
-  v.addEventListener('click', toggle);
+  $('#pm-play')?.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+  $('#pm-back10')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    v.currentTime = Math.max(0, v.currentTime - 10);
+    wakeControls();
+  });
+  $('#pm-fwd10')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (v.duration) v.currentTime = Math.min(v.duration - 0.5, v.currentTime + 10);
+    wakeControls();
+  });
+  v.addEventListener('click', () => {
+    if (document.body.classList.contains('mobile-ui')) {
+      if (p.classList.contains('idle')) wakeControls();
+      else {
+        clearTimeout(player.idleTimer);
+        p.classList.add('idle');
+      }
+      return;
+    }
+    toggle();
+  });
   v.addEventListener('dblclick', () => $('#p-full')?.click());
   v.addEventListener('pause', () => setPlayIcon(false));
   v.addEventListener('play', () => setPlayIcon(true));
@@ -1438,16 +1484,29 @@ function bindPlayer() {
   v.addEventListener('pause', () => saveProgress(true));
   v.addEventListener('progress', updateSeekUI);
   const prog = $('#p-progress');
-  const seekTo = (e) => {
+  const seekAtClientX = (clientX) => {
     if (player.live || !v.duration) return;
     const r = prog.getBoundingClientRect();
-    v.currentTime = Math.min(0.999, Math.max(0, (e.clientX - r.left) / r.width)) * v.duration;
+    v.currentTime = Math.min(0.999, Math.max(0, (clientX - r.left) / r.width)) * v.duration;
     updateSeekUI();
   };
+  const seekTo = (e) => seekAtClientX(e.clientX);
   let scrubbing = false;
   prog.addEventListener('mousedown', (e) => { scrubbing = true; seekTo(e); });
   window.addEventListener('mousemove', (e) => { if (scrubbing) seekTo(e); });
   window.addEventListener('mouseup', () => { scrubbing = false; });
+  prog.addEventListener('touchstart', (e) => {
+    if (!e.touches.length) return;
+    scrubbing = true;
+    seekAtClientX(e.touches[0].clientX);
+    wakeControls();
+  }, { passive: true });
+  prog.addEventListener('touchmove', (e) => {
+    if (!scrubbing || !e.touches.length) return;
+    seekAtClientX(e.touches[0].clientX);
+    wakeControls();
+  }, { passive: true });
+  prog.addEventListener('touchend', () => { scrubbing = false; }, { passive: true });
   prog.addEventListener('mousemove', (e) => {
     if (player.live || !v.duration) return;
     const r = prog.getBoundingClientRect();
@@ -1583,9 +1642,16 @@ function bindNavbar() {
   // Arama + Tüm Kanallar kapsam seçici
   const sbox = $('#search-box'), sinput = $('#search-input'), sallBtn = $('#search-all-toggle');
   $('#search-toggle').addEventListener('click', () => {
-    sbox.classList.toggle('open');
-    if (sbox.classList.contains('open')) sinput.focus();
-    else { sinput.value = ''; sinput.dispatchEvent(new Event('input')); }
+    const opening = !sbox.classList.contains('open');
+    sbox.classList.toggle('open', opening);
+    document.body.classList.toggle('mobile-search-open', opening && document.body.classList.contains('mobile-ui'));
+    if (opening) {
+      window.__syncMobileNav?.('search');
+      sinput.focus();
+    } else {
+      sinput.value = '';
+      sinput.dispatchEvent(new Event('input'));
+    }
   });
   let searchSeq = 0;
   const runSearch = async () => {
@@ -1655,6 +1721,10 @@ function showGridView(title, items, regIds = null, emptyMsg = null) {
   $('#rows').classList.add('hidden');
   $('#cs-view').classList.add('hidden');
   $('#grid-view').classList.remove('hidden');
+  if ($('#search-box')?.classList.contains('open')) window.__syncMobileNav?.('search');
+  else if (state.view === 'list') window.__syncMobileNav?.('list');
+  else if (state.view === 'new') window.__syncMobileNav?.('new');
+  else window.__syncMobileNav?.('grid');
   $('#grid-title').textContent = title;
   if (!items || !items.length) {
     $('#grid-cards').innerHTML = `<div class="no-results"><b>${esc(emptyMsg || 'Sonuç bulunamadı')}</b>Aktif depoyu değiştirebilir veya başka depo ekleyebilirsin.</div>`;
@@ -1665,6 +1735,7 @@ function showGridView(title, items, regIds = null, emptyMsg = null) {
 }
 
 function restoreHome() {
+  document.body.classList.remove('mobile-search-open');
   renderHome();
 }
 
@@ -1673,15 +1744,19 @@ function restoreHome() {
    ============================================================ */
 let csFilterTV = 'all';
 let csFilterRepo = 'all';
-let settingsPanel = 'engine';
+let settingsPanel = 'layout';
 
 function showSettingsView(panel) {
   window.scrollTo(0, 0);
+  state.view = 'cs';
+  document.body.classList.remove('mobile-search-open');
+  $('#search-box')?.classList.remove('open');
   $('#hero').classList.add('hidden');
   $('#rows').classList.add('hidden');
   $('#grid-view').classList.add('hidden');
   $('#cs-view').classList.remove('hidden');
   $$('.nav-link').forEach((x) => x.classList.remove('active'));
+  window.__syncMobileNav?.('deps');
   $('#cs-engine-badge').textContent = 'Gömülü CloudStream altyapısı bağlı — 127.0.0.1:8765';
   CS.ensureBridge().then((ok) => {
     const el = $('#cs-engine-badge');
@@ -1691,7 +1766,9 @@ function showSettingsView(panel) {
   renderCSOfficial();
   renderCSRepos();
   renderCSPlugins();
-  showSettingsPanel(panel || settingsPanel || 'engine');
+  window.__renderLayoutModeCards?.();
+  const initialPanel = panel || (!CS.repos.length ? 'deps' : (settingsPanel || 'layout'));
+  showSettingsPanel(initialPanel);
 }
 
 function showSettingsPanel(name) {
@@ -2187,18 +2264,209 @@ if (window.pywebview !== undefined) bindWindowControls();
 else window.addEventListener('pywebviewready', bindWindowControls);
 
 /* ============================================================
-   ANDROID & ANDROID TV (60 FPS TV MODU + UZAKTAN KUMANDA D-PAD)
+   CLOUDSTREAM GÖRÜNÜM DÜZENİ + MOBİL UYGULAMA + TV D-PAD MOTORU
+   Modlar: auto | phone (body.mobile-ui) | tv (body.tv-mode) | emulator
    ============================================================ */
 function initPlatformAndDpad() {
+  const LAYOUT_KEY = 'cs-layout-mode-v1';
   const ua = navigator.userAgent || '';
   const isAndroid = Boolean(window.ElderboxAndroid) || /Android/i.test(ua);
-  let isTv = false;
-  try { isTv = Boolean(window.ElderboxAndroid?.isTv?.()); } catch {}
-  if (!isTv && (/\b(TV|AFT|BRAVIA|MiBOX|Shield|Leanback|GoogleTV|Chromecast|SmartTV)\b/i.test(ua) || location.search.includes('tv=1'))) {
-    isTv = true;
-  }
   if (isAndroid) document.body.classList.add('android-mode');
-  if (isTv) document.body.classList.add('tv-mode');
+
+  function detectAutoLayout() {
+    try {
+      if (window.ElderboxAndroid?.isTv?.()) return 'tv';
+      if (window.ElderboxAndroid?.isEmulator?.()) return 'emulator';
+      if (window.ElderboxAndroid?.isMobile?.()) return 'phone';
+    } catch {}
+    if (location.search.includes('tv=1') || /\b(TV|AFT|BRAVIA|MiBOX|Shield|Leanback|GoogleTV|Chromecast|SmartTV)\b/i.test(ua)) {
+      return 'tv';
+    }
+    if (location.search.includes('emulator=1')) return 'emulator';
+    if (location.search.includes('mobile=1')) return 'phone';
+    if (!window.pywebview && window.innerWidth <= 820) return 'phone';
+    return 'emulator';
+  }
+
+  const MODE_LABELS = {
+    phone: 'Telefon Görünümü',
+    tv: 'TV Görünümü',
+    emulator: 'Emülatör / Masaüstü',
+  };
+
+  function getSavedLayoutMode() {
+    const raw = localStorage.getItem(LAYOUT_KEY) || 'auto';
+    return ['auto', 'phone', 'tv', 'emulator'].includes(raw) ? raw : 'auto';
+  }
+
+  let effectiveMode = 'emulator';
+
+  function renderLayoutModeCards() {
+    const saved = getSavedLayoutMode();
+    const autoDetected = detectAutoLayout();
+    $$('#layout-mode-grid .layout-mode-card').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.layoutMode === saved);
+    });
+    const badge = $('#lm-auto-detected');
+    if (badge) {
+      badge.textContent = `Otomatik algılama · Algılanan: ${MODE_LABELS[autoDetected] || 'Telefon'}`;
+    }
+  }
+  window.__renderLayoutModeCards = renderLayoutModeCards;
+
+  function applyLayoutMode(mode, notify = false) {
+    const clean = ['auto', 'phone', 'tv', 'emulator'].includes(mode) ? mode : 'auto';
+    localStorage.setItem(LAYOUT_KEY, clean);
+    effectiveMode = clean === 'auto' ? detectAutoLayout() : clean;
+
+    document.body.classList.toggle('mobile-ui', effectiveMode === 'phone');
+    document.body.classList.toggle('tv-mode', effectiveMode === 'tv');
+    document.body.classList.toggle('emulator-mode', effectiveMode === 'emulator');
+    if (effectiveMode !== 'phone') {
+      document.body.classList.remove('mobile-search-open');
+    }
+
+    try { window.ElderboxAndroid?.setLayoutMode?.(clean); } catch {}
+    renderLayoutModeCards();
+
+    if (notify) {
+      const label = clean === 'auto'
+        ? `Otomatik (${MODE_LABELS[effectiveMode]})`
+        : MODE_LABELS[effectiveMode];
+      toast(`Görünüm düzeni: ${label}`);
+    }
+  }
+
+  applyLayoutMode(getSavedLayoutMode(), false);
+
+  window.addEventListener('resize', () => {
+    if (getSavedLayoutMode() === 'auto' && !window.ElderboxAndroid) {
+      const next = detectAutoLayout();
+      if (next !== effectiveMode) applyLayoutMode('auto', false);
+    }
+  }, { passive: true });
+
+  /* Mobil Alt Sekme Çubuğu & Kategori Hapları Senkronizasyonu */
+  window.__syncMobileNav = function(activeTab) {
+    $$('#mobile-tabbar .mob-tab').forEach((b) => {
+      b.classList.toggle('active', b.dataset.mobTab === activeTab);
+    });
+    const pills = $('#mobile-pills');
+    if (pills) {
+      pills.classList.toggle('hidden-pills', activeTab !== 'home');
+    }
+  };
+
+  function bindMobileShell() {
+    renderLayoutModeCards();
+    $$('#layout-mode-grid .layout-mode-card').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyLayoutMode(btn.dataset.layoutMode || 'auto', true);
+      });
+    });
+
+    /* Alt Navigasyon Çubuğu (Ana Sayfa / Yeni ve Popüler / Ara / Listem / Depolar) */
+    $$('#mobile-tabbar .mob-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.mobTab;
+        $('#repo-picker')?.classList.remove('open');
+
+        if (tab === 'home') {
+          document.body.classList.remove('mobile-search-open');
+          $('#search-box')?.classList.remove('open');
+          if ($('#search-input')) $('#search-input').value = '';
+          state.typeFilter = null;
+          $$('#mobile-pills .mob-pill[data-mob-filter]').forEach((p) => {
+            p.classList.toggle('active', p.dataset.mobFilter === 'all');
+          });
+          $$('.nav-link').forEach((x) => x.classList.toggle('active', x.dataset.view === 'home'));
+          window.scrollTo(0, 0);
+          renderHome();
+          return;
+        }
+
+        if (tab === 'new') {
+          document.body.classList.remove('mobile-search-open');
+          $('#search-box')?.classList.remove('open');
+          state.view = 'new';
+          const { rows, repo } = state.homeCache;
+          const uniq = [...new Map((rows || []).flatMap((r) => r.items).map((i) => [i.url, i])).values()];
+          const list = [...uniq].sort((a, b) => (b.year || 0) - (a.year || 0)).slice(0, 42);
+          showGridView('Yeni ve Popüler' + (repo?.name ? ' · ' + repo.name : ''), list, null, list.length ? null : 'Önce bir depo ve kanal seçerek içeriklerin yüklenmesini bekleyin.');
+          window.__syncMobileNav('new');
+          return;
+        }
+
+        if (tab === 'search') {
+          const sbox = $('#search-box');
+          const sinput = $('#search-input');
+          if (sbox && sinput) {
+            sbox.classList.add('open');
+            document.body.classList.add('mobile-search-open');
+            window.__syncMobileNav('search');
+            const q = sinput.value.trim();
+            if (!q) {
+              const { rows } = state.homeCache;
+              const sample = [...new Map((rows || []).flatMap((r) => r.items).map((i) => [i.url, i])).values()].slice(0, 24);
+              showGridView('Arama — Önerilen İçerikler', sample, null, 'Aramak istediğin film, dizi veya anime adını yukarıya yaz.');
+            }
+            setTimeout(() => sinput.focus(), 40);
+          }
+          return;
+        }
+
+        if (tab === 'list') {
+          document.body.classList.remove('mobile-search-open');
+          $('#search-box')?.classList.remove('open');
+          state.view = 'list';
+          showBookmarksView();
+          window.__syncMobileNav('list');
+          return;
+        }
+
+        if (tab === 'deps') {
+          document.body.classList.remove('mobile-search-open');
+          $('#search-box')?.classList.remove('open');
+          showSettingsView('deps');
+          window.__syncMobileNav('deps');
+        }
+      });
+    });
+
+    /* Üst Kategori Hapları (Tümü / Diziler / Filmler / Kanallar ▾) */
+    $$('#mobile-pills .mob-pill[data-mob-filter]').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        $$('#mobile-pills .mob-pill[data-mob-filter]').forEach((x) => x.classList.remove('active'));
+        pill.classList.add('active');
+        const f = pill.dataset.mobFilter;
+        state.typeFilter = f === 'series' ? 'TvSeries' : (f === 'movies' ? 'Movie' : null);
+        window.scrollTo(0, 0);
+        renderHome();
+      });
+    });
+
+    $('#mob-pill-chan')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!CS.repos.length) {
+        showSettingsView('deps');
+        return;
+      }
+      $('#repo-picker')?.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      const rp = $('#repo-picker');
+      if (rp && rp.classList.contains('open') && !rp.contains(e.target) && e.target !== $('#mob-pill-chan')) {
+        rp.classList.remove('open');
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindMobileShell);
+  } else {
+    bindMobileShell();
+  }
 
   /* Android Geri Tuşu & Kumanda Back Yöneticisi */
   window.__elderboxBack = function() {
@@ -2222,17 +2490,23 @@ function initPlatformAndDpad() {
       closeModal();
       return true;
     }
+    const rp = $('#repo-picker');
+    if (rp && rp.classList.contains('open')) {
+      rp.classList.remove('open');
+      return true;
+    }
     const sb = $('#search-box');
     if (sb && sb.classList.contains('open')) {
       $('#search-input').value = '';
       sb.classList.remove('open');
-      $('#search-results')?.classList.add('hidden');
-      $('#hero')?.classList.remove('hidden');
-      $('#rows')?.classList.remove('hidden');
+      document.body.classList.remove('mobile-search-open');
+      renderHome();
       return true;
     }
     if (state.view && state.view !== 'home') {
-      switchView('home');
+      state.typeFilter = null;
+      $$('.nav-link').forEach((x) => x.classList.toggle('active', x.dataset.view === 'home'));
+      renderHome();
       return true;
     }
     return false;
@@ -2241,21 +2515,28 @@ function initPlatformAndDpad() {
   /* Uzaktan Kumanda (D-Pad) Odaklama Motoru */
   const FOCUS_SEL = [
     '.card',
-    '.snav-btn',
-    '.nav-links a',
-    '.btn',
+    '.nav-link',
+    '.btn-play',
+    '.btn-info',
     '.icon-btn',
     '.rp-btn',
     '.rp-item',
     '.md-close',
-    '.md-season-select',
     '.md-ep',
-    '.cs-snav-item',
+    '.set-tab',
+    '.layout-mode-card',
     '.cs-repo-tab',
-    '.cs-btn',
+    '.cs-addbtn',
+    '.cs-official-item',
+    '.cs-install-btn',
+    '.cs-mini',
+    '.cs-filter',
     '.cs-input',
-    '.cs-select',
+    '.nf-select',
+    '.mob-tab',
+    '.mob-pill',
     '.p-btn',
+    '.pm-btn',
     '.ep-item',
     '.ne-play',
     '.ne-close',
@@ -2267,7 +2548,7 @@ function initPlatformAndDpad() {
 
   function isVisible(el) {
     if (!el || !el.isConnected) return false;
-    if (el.closest('.hidden')) return false;
+    if (el.closest('.hidden') || el.closest('[hidden]')) return false;
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) return false;
     const r = el.getBoundingClientRect();
@@ -2285,6 +2566,8 @@ function initPlatformAndDpad() {
     }
     const modalOv = $('#modal-overlay');
     if (modalOv && !modalOv.classList.contains('hidden')) return $('#modal') || modalOv;
+    const rp = $('#repo-picker');
+    if (rp && rp.classList.contains('open')) return $('.rp-menu', rp) || rp;
     return document.body;
   }
 
@@ -2296,7 +2579,7 @@ function initPlatformAndDpad() {
     if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
     try { el.focus({ preventScroll: true }); } catch {}
     try {
-      el.scrollIntoView({ behavior: isTv ? 'auto' : 'smooth', block: 'nearest', inline: 'center' });
+      el.scrollIntoView({ behavior: effectiveMode === 'tv' ? 'auto' : 'smooth', block: 'nearest', inline: 'center' });
     } catch {}
   }
 
@@ -2310,7 +2593,7 @@ function initPlatformAndDpad() {
     const curRect = currentFocus.getBoundingClientRect();
     const cx = curRect.left + curRect.width / 2;
     const cy = curRect.top + curRect.height / 2;
-    const curRow = currentFocus.closest('.row-track, .cs-repo-tabs, .hero-buttons, #sidenav, .p-row');
+    const curRow = currentFocus.closest('.row-track, .cs-repo-tabs, .hero-btns, .set-side, .p-row, #mobile-tabbar, #mobile-pills');
 
     let best = null;
     let bestScore = Infinity;
@@ -2331,8 +2614,7 @@ function initPlatformAndDpad() {
       const primary = (dir === 'left' || dir === 'right') ? Math.abs(dx) : Math.abs(dy);
       const ortho = (dir === 'left' || dir === 'right') ? Math.abs(dy) : Math.abs(dx);
 
-      // Yatay ok tuşlarında aynı satır dışına çıkmayı ağır cezalandır
-      const sameRow = curRow && curRow === el.closest('.row-track, .cs-repo-tabs, .hero-buttons, #sidenav, .p-row');
+      const sameRow = curRow && curRow === el.closest('.row-track, .cs-repo-tabs, .hero-btns, .set-side, .p-row, #mobile-tabbar, #mobile-pills');
       if ((dir === 'left' || dir === 'right') && curRow && !sameRow && ortho > curRect.height * 0.85) {
         continue;
       }
@@ -2363,7 +2645,6 @@ function initPlatformAndDpad() {
       return;
     }
 
-    // Oynatıcı açıkken ve çekmece kapalıyken ok tuşları oynatıcı tarafından yönetilir
     const p = $('#player');
     const drawer = $('#eps-drawer');
     if (p && !p.classList.contains('hidden') && (!drawer || drawer.classList.contains('hidden'))) {
@@ -2391,14 +2672,11 @@ function initPlatformAndDpad() {
     }
   });
 
-  // Fare hareket ettiğinde TV odak halkasını temizle (hibrit kullanım)
-  if (!isTv) {
-    document.addEventListener('pointermove', () => {
-      if (currentFocus) {
-        currentFocus.classList.remove('tv-focus');
-        currentFocus = null;
-      }
-    }, { passive: true });
-  }
+  document.addEventListener('pointermove', () => {
+    if (effectiveMode !== 'tv' && currentFocus) {
+      currentFocus.classList.remove('tv-focus');
+      currentFocus = null;
+    }
+  }, { passive: true });
 }
 initPlatformAndDpad();
