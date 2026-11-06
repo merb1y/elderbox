@@ -414,9 +414,11 @@ function surprisePlay() {
 /* Hero / Önizleme Oynat: film/canlıysa doğrudan, diziyse kayıtlı veya ilk bölümden */
 async function heroPlay(item) {
   if (item.embed) { playItem(item); return; }
+  const session0 = (player.session = (player.session || 0) + 1);
   const repoUrl = state.homeCache.repo?.url || CS.getActiveRepo()?.url;
   toast('İçerik çözülüyor…');
   const det = await CS.getDetails(repoUrl, item).catch(() => null);
+  if ((player.session || 0) !== session0) return;
   if (det?.dataUrl) { playEpisode(item, det.dataUrl, ''); return; }
   if (det?.episodes?.length) {
     item.__episodes = det.episodes;
@@ -846,20 +848,29 @@ function poolLinks() {
 
 /* Sağlayıcıdan gerçek oynatma bağlantılarını çözüp oynat */
 async function playEpisode(item, data, label = '', episodes = null, epIndex = -1) {
+  const session0 = (player.session = (player.session || 0) + 1);
   player.currentData = data;
   player.episodes = episodes || item?.__episodes || [];
   player.epIndex = epIndex >= 0 ? epIndex : player.episodes.findIndex((e) => e.data === data);
   player.introSkipped = false;
   player.nextDismissed = false;
   player.subOffset = 0;
+  player.links = [];
+  player.allLinks = [];
   $('#p-skip-intro')?.classList.add('hidden');
   $('#p-next-card')?.classList.add('hidden');
   $('#eps-drawer')?.classList.add('hidden');
+
+  const live = item.type === 'Live';
+  closeModal();
+  openPlayerShell(item, { live, label: label || 'Bağlantılar çözülüyor…' });
+  populateEpisodesDrawer();
 
   const repoUrl = state.homeCache.repo?.url || CS.getActiveRepo()?.url;
   toast('Oynatma bağlantıları çözülüyor…');
   try {
     const res = await CS.links(repoUrl, data);
+    if ((player.session || 0) !== session0) return;
     let links = Array.isArray(res) ? res : (res.links || []);
     player.subtitles = Array.isArray(res) ? [] : (res.subtitles || []);
     links = links.sort((a, b) => (b.quality || 0) - (a.quality || 0));
@@ -867,7 +878,11 @@ async function playEpisode(item, data, label = '', episodes = null, epIndex = -1
     if (!links.length && /\.m3u8|\.mp4|\.ts(\?|$)/i.test(data)) {
       links = [{ url: data, isM3u8: /\.m3u8/i.test(data), source: item.apiName || '', quality: 0 }];
     }
-    if (!links.length) { toast('Oynatılabilir bağlantı bulunamadı'); return; }
+    if (!links.length) {
+      toast('Oynatılabilir bağlantı bulunamadı');
+      closePlayer();
+      return;
+    }
 
     player.allLinks = links;
     // Kullanıcının dublaj/altyazı tercihi (Ayarlar) varsa o varyantı başa al
@@ -878,26 +893,29 @@ async function playEpisode(item, data, label = '', episodes = null, epIndex = -1
       if (tagged.length) pool = tagged.concat(links.filter((l) => linkTag(l) !== pref));
     }
 
-    const live = item.type === 'Live';
     player.links = pool;
-    closeModal();
-    openPlayerShell(item, { live, label });
-    populateEpisodesDrawer();
+    player.label = label || '';
+    $('#p-ep').textContent = player.label || item.apiName || '';
+    $('#p-quality-wrap').classList.toggle('hidden', player.embed || !pool.length);
     populateSpeedMenu();
     populateQualityMenu(0);
     populateSrcMenu(pool[0]?.url || null);
     populateAudioMenu();
 
-    const session0 = player.session || 0;
     for (let i = 0; i < Math.min(4, pool.length); i++) {
       const ok = await tryPlay(pool[i], i, 0);
-      if ((player.session || 0) !== session0) return; // kullanıcı oynatıcıyı kapattı
+      if ((player.session || 0) !== session0) return; // kullanıcı oynatıcıyı kapattı veya başka bölüm açtı
       if (ok) { populateSrcMenu(pool[i].url); populateAudioMenu(); autoPickSubtitle(); return; }
       toast(`Sunucu yanıt vermedi, yedek deneniyor…`);
     }
     toast('Hiçbir bağlantı oynatılamadı');
     closePlayer();
-  } catch { toast('Bağlantılar çözülemedi'); }
+  } catch {
+    if ((player.session || 0) === session0) {
+      toast('Bağlantılar çözülemedi');
+      closePlayer();
+    }
+  }
 }
 
 /* Oynatıcı içi Bölüm Çekmecesi ve Sonraki Bölüm kontrolü */
@@ -1250,11 +1268,13 @@ function tryPlay(link, idx = 0, restoreT = 0) {
     const resumeAt = restoreT > 0 ? restoreT : (player.resumeT || 0);
     const onPlaying = () => {
       if (resumeAt > 0) {
+        if (resumeAt >= 30) player.introSkipped = true;
         try { v.currentTime = resumeAt; } catch {}
         toast(fmtTime(resumeAt) + ' konumundan devam ediliyor');
         player.resumeT = 0;
       }
       setPlayIcon(true);
+      wakeControls();
       done(true);
     };
     const onFatal = () => done(false);
@@ -1359,7 +1379,7 @@ function closePlayer() {
   $('#p-skip-intro')?.classList.add('hidden');
   $('#p-next-card')?.classList.add('hidden');
   $('#eps-drawer')?.classList.add('hidden');
-  $('#p-iframe-wrap').classList.remove('hidden');
+  $('#p-iframe-wrap').classList.add('hidden');
   $('#p-iframe-wrap').innerHTML = '';
   $('#player').classList.add('hidden', 'idle');
   document.body.classList.remove('no-scroll');
@@ -1375,11 +1395,27 @@ function closePlayer() {
   if (state.view === 'home') renderHome();
 }
 
+function isAnyPlayerMenuOpen() {
+  return ['#p-speed-menu', '#p-quality-menu', '#p-audio-menu', '#p-tag-menu', '#eps-drawer']
+    .some((sel) => {
+      const el = $(sel);
+      return el && !el.classList.contains('hidden');
+    });
+}
+
 function wakeControls() {
   const p = $('#player');
+  if (!p) return;
   p.classList.remove('idle');
   clearTimeout(player.idleTimer);
-  player.idleTimer = setTimeout(() => p.classList.add('idle'), 3000);
+  player.idleTimer = setTimeout(() => {
+    const v = $('#video');
+    if ((v && v.paused && (v.src || window.__hls)) || isAnyPlayerMenuOpen()) {
+      wakeControls();
+      return;
+    }
+    p.classList.add('idle');
+  }, 4000);
 }
 
 /* ---------- Oynatıcı kontrolleri ---------- */
@@ -1403,10 +1439,13 @@ function updateSeekUI() {
   }
   $('#p-time').textContent = dur ? `-${fmtTime(dur - cur)}` : '';
 
-  /* İntroyu Atla (5 sn – 110 sn arası) */
+  /* İntroyu Atla (5 sn – 90 sn arası, bölüm başına yalnızca 1 kez) */
   const skipBtn = $('#p-skip-intro');
   if (skipBtn) {
-    const showSkip = !player.live && !player.embed && dur > 180 && cur >= 5 && cur <= 110 && !player.introSkipped;
+    if (cur > 90 && isFinite(dur) && dur > 180) {
+      player.introSkipped = true;
+    }
+    const showSkip = !player.live && !player.embed && isFinite(dur) && dur > 180 && cur >= 5 && cur <= 90 && !player.introSkipped;
     skipBtn.classList.toggle('hidden', !showSkip);
   }
 
@@ -1464,7 +1503,21 @@ function bindPlayer() {
 
   applySubSizeClass();
   $('#p-back').addEventListener('click', closePlayer);
-  p.addEventListener('mousemove', wakeControls);
+
+  /* Dokunmatik ekranlarda sentetik mousemove olayının idle durumunu bozmasını önle */
+  let lastTouchTime = 0;
+  const markTouch = (e) => {
+    lastTouchTime = Date.now();
+    if (!p.classList.contains('idle') && e.target.closest('.player-ui, .player-top, .p-mobile-center, .eps-drawer')) {
+      wakeControls();
+    }
+  };
+  p.addEventListener('touchstart', markTouch, { passive: true });
+  p.addEventListener('touchend', () => { lastTouchTime = Date.now(); }, { passive: true });
+  p.addEventListener('mousemove', () => {
+    if (Date.now() - lastTouchTime < 900) return;
+    wakeControls();
+  });
 
   /* Oynat/duraklat + merkez animasyonlu ikon */
   let tapTimer = null;
@@ -1505,9 +1558,11 @@ function bindPlayer() {
     wakeControls();
   });
   v.addEventListener('click', () => {
-    if (document.body.classList.contains('mobile-ui')) {
-      if (p.classList.contains('idle')) wakeControls();
-      else {
+    const isTouchTap = (Date.now() - lastTouchTime < 900) || document.body.classList.contains('mobile-ui');
+    if (isTouchTap) {
+      if (p.classList.contains('idle')) {
+        wakeControls();
+      } else {
         clearTimeout(player.idleTimer);
         p.classList.add('idle');
       }
@@ -1515,9 +1570,12 @@ function bindPlayer() {
     }
     toggle();
   });
-  v.addEventListener('dblclick', () => $('#p-full')?.click());
-  v.addEventListener('pause', () => setPlayIcon(false));
-  v.addEventListener('play', () => setPlayIcon(true));
+  v.addEventListener('dblclick', () => {
+    if (Date.now() - lastTouchTime < 900) return;
+    $('#p-full')?.click();
+  });
+  v.addEventListener('pause', () => { setPlayIcon(false); wakeControls(); });
+  v.addEventListener('play', () => { setPlayIcon(true); wakeControls(); });
 
   /* Bölüm bittiğinde otomatik sıradaki bölüme geç */
   v.addEventListener('ended', () => {
@@ -1529,13 +1587,17 @@ function bindPlayer() {
   });
 
   /* İntroyu Atla */
-  $('#p-skip-intro')?.addEventListener('click', () => {
+  $('#p-skip-intro')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (player.introSkipped) return;
     player.introSkipped = true;
     $('#p-skip-intro').classList.add('hidden');
-    if (v.duration) {
+    if (v.duration && isFinite(v.duration)) {
       v.currentTime = Math.min(v.duration - 5, v.currentTime + 85);
       toast('İntro atlandı (+85 sn)');
     }
+    wakeControls();
   });
 
   /* Sonraki Bölüm & Bölüm Çekmecesi */

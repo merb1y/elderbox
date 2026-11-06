@@ -1475,10 +1475,10 @@ body.desktop-shell .win-controls {
    ============================================================ */
 
 /* Varsayılan olarak mobil özel bileşenler masaüstü/emülatör ve TV'de gizlidir */
-.mobile-pills,
-.mobile-tabbar,
-.p-mobile-center,
-.search-clear-btn,
+body:not(.mobile-ui) .mobile-pills,
+body:not(.mobile-ui) .mobile-tabbar,
+body:not(.mobile-ui) .p-mobile-center,
+body:not(.mobile-ui) .search-clear-btn,
 .mobile-sheet-overlay.hidden {
   display: none !important;
 }
@@ -2041,11 +2041,11 @@ body.mobile-ui .mobile-tabbar {
   left: 0; right: 0; bottom: 0;
   height: calc(60px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: rgba(12, 12, 16, .96);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-top: 1px solid rgba(255, 255, 255, .08);
-  display: grid;
+  background: #0c0c10;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-top: 1px solid rgba(255, 255, 255, .1);
+  display: grid !important;
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
   z-index: 180;
@@ -2673,7 +2673,7 @@ body.mobile-ui .p-mobile-center {
   position: absolute;
   inset: 0;
   z-index: 11;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
   gap: 44px;
@@ -2685,13 +2685,17 @@ body.mobile-ui #player.embed .p-mobile-center {
   opacity: 0;
   pointer-events: none;
 }
+body.mobile-ui #player.idle .pm-btn,
+body.mobile-ui #player.embed .pm-btn {
+  pointer-events: none !important;
+}
 body.mobile-ui .pm-btn {
   pointer-events: auto;
-  width: 54px;
-  height: 54px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: rgba(12, 12, 16, .58);
-  border: 1.5px solid rgba(255, 255, 255, .38);
+  background: rgba(12, 12, 16, .66);
+  border: 1.5px solid rgba(255, 255, 255, .45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2709,8 +2713,8 @@ body.mobile-ui .pm-btn svg {
 body.mobile-ui .pm-btn.pm-play {
   width: 68px;
   height: 68px;
-  background: rgba(229, 9, 20, .86);
-  border-color: rgba(255, 255, 255, .65);
+  background: rgba(229, 9, 20, .88);
+  border-color: rgba(255, 255, 255, .7);
 }
 body.mobile-ui .pm-btn.pm-play svg {
   width: 34px;
@@ -2729,23 +2733,39 @@ body.mobile-ui .p-ep {
   font-size: 12.5px;
 }
 body.mobile-ui .player-ui {
-  padding: 0 18px 12px;
+  padding: 0 14px 12px;
+  z-index: 15;
 }
 body.mobile-ui .p-progress {
   height: 6px;
+  margin-bottom: 6px;
 }
 body.mobile-ui .p-knob {
   transform: translateY(-50%) scale(1);
   width: 15px;
   height: 15px;
 }
-/* Mobilde merkezde dev ⏪ ⏯ ⏩ düğmeleri olduğu için alt bardaki mükerrer düğmeleri gizle */
-body.mobile-ui #p-play,
-body.mobile-ui #p-back10,
-body.mobile-ui #p-fwd10,
-body.mobile-ui #p-volume,
-body.mobile-ui #p-pip,
-body.mobile-ui #p-full {
+body.mobile-ui .p-controls {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  margin-top: 4px;
+}
+body.mobile-ui .p-left,
+body.mobile-ui .p-right {
+  gap: 2px;
+}
+body.mobile-ui .p-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+}
+body.mobile-ui .p-btn svg {
+  width: 22px;
+  height: 22px;
+}
+/* Mobilde yalnızca hover gerektiren ses kaydırıcı çubuğunu ve masaüstü PiP düğmesini gizle; geri/ileri sarma, oynat, ses ve tam ekran her zaman erişilebilir kalsın */
+body.mobile-ui #p-vol,
+body.mobile-ui #p-pip {
   display: none !important;
 }
 body.mobile-ui .p-menu {
@@ -2754,13 +2774,22 @@ body.mobile-ui .p-menu {
 }
 body.mobile-ui .skip-intro {
   right: 18px;
-  bottom: 78px;
+  bottom: 84px;
+  z-index: 13;
   font-size: 14px;
   padding: 9px 20px;
+  transition: bottom .25s ease, opacity .2s ease;
+}
+body.mobile-ui #player.idle .skip-intro {
+  bottom: 24px;
+}
+body.mobile-ui .skip-intro:hover {
+  transform: none;
 }
 body.mobile-ui .next-ep {
   right: 16px;
-  bottom: 76px;
+  bottom: 82px;
+  z-index: 13;
   width: min(300px, calc(100vw - 32px));
 }
 body.mobile-ui .eps-drawer {
