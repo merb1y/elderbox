@@ -102,6 +102,11 @@ function renderRepoPicker() {
 
   $('#rp-btn', wrap)?.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (document.body.classList.contains('mobile-ui')) {
+      wrap.classList.remove('open');
+      openMobileRepoSheet();
+      return;
+    }
     wrap.classList.toggle('open');
   });
   $$('.rp-item[data-url]', wrap).forEach((b) => b.addEventListener('click', () => {
@@ -136,6 +141,73 @@ function renderRepoPicker() {
   wrap.addEventListener('mouseenter', alignMenu);
   new MutationObserver(alignMenu).observe(wrap, { attributes: true, attributeFilter: ['class'] });
   alignMenu();
+}
+
+function closeMobileRepoSheet() {
+  const ov = $('#mobile-sheet-overlay');
+  if (ov) ov.classList.add('hidden');
+}
+
+function openMobileRepoSheet() {
+  const ov = $('#mobile-sheet-overlay');
+  const body = $('#ms-body');
+  if (!ov || !body) return;
+  const repos = CS.repos;
+  if (!repos.length) {
+    showSettingsView('deps');
+    return;
+  }
+  const active = CS.getActiveRepo();
+  const prov = CS.getActiveProvider(active?.url);
+  const counts = Object.fromEntries(repos.map((r) => [r.url, CS.repoProviders(r.url).length]));
+  const chans = active ? CS.repoProviders(active.url) : [];
+
+  body.innerHTML = `
+    <div class="ms-sec-label">Kurulu Depolar (${repos.length})</div>
+    ${repos.map((r) => {
+      const isAct = active && active.url === r.url;
+      return `<button class="ms-item ${isAct ? 'active' : ''}" type="button" data-ms-repo="${esc(r.url)}">
+        ${r.iconUrl ? `<img src="${esc(r.iconUrl)}" alt="" onerror="this.style.display='none'">` : `<span class="rp-mini">${esc((r.name || 'C')[0])}</span>`}
+        <span class="ms-item-info">
+          <span class="ms-item-name">${esc(r.name)}</span>
+          <span class="ms-item-meta">${counts[r.url]} yüklü kanal</span>
+        </span>
+        ${isAct ? '<span class="ms-check">✓</span>' : ''}
+      </button>`;
+    }).join('')}
+    <div class="ms-sec-label" style="margin-top:6px">Kanallar · ${esc(active?.name || '')} (${chans.length})</div>
+    ${chans.length ? chans.map((p) => {
+      const isAct = prov && prov.__key === p.__key;
+      return `<button class="ms-item ${isAct ? 'active' : ''}" type="button" data-ms-prov="${esc(p.__key)}">
+        ${p.iconUrl ? `<img src="${esc(p.iconUrl.replace('%size%', '64'))}" alt="" onerror="this.outerHTML='<span class=&quot;rp-mini&quot;>${esc((p.name || 'K')[0])}</span>'">` : `<span class="rp-mini">${esc((p.name || 'K')[0])}</span>`}
+        <span class="ms-item-info">
+          <span class="ms-item-name">${esc(p.name)}</span>
+          <span class="ms-item-meta">${esc((p.tvTypes || []).map(typeLabel).slice(0, 3).join(' · ') || 'Canlı sağlayıcı')}</span>
+        </span>
+        ${isAct ? '<span class="ms-check">✓</span>' : ''}
+      </button>`;
+    }).join('') : '<p class="cs-empty" style="padding:8px 10px">Bu depoda henüz yüklü kanal yok.</p>'}
+    <button class="ms-manage-btn" type="button" data-ms-manage>+ Depo ve Kanalları Yönet</button>
+  `;
+
+  $$('[data-ms-repo]', body).forEach((b) => b.addEventListener('click', () => {
+    CS.setActiveRepo(b.dataset.msRepo);
+    const nextProvs = CS.repoProviders(b.dataset.msRepo);
+    CS.setActiveProviderKey(nextProvs[0]?.__key || null);
+    openMobileRepoSheet(); // seçilen deponun kanallarını anında aynı çekmecede göster
+    renderHome();
+  }));
+  $$('[data-ms-prov]', body).forEach((b) => b.addEventListener('click', () => {
+    closeMobileRepoSheet();
+    CS.setActiveProviderKey(b.dataset.msProv || null);
+    renderHome();
+  }));
+  $('[data-ms-manage]', body)?.addEventListener('click', () => {
+    closeMobileRepoSheet();
+    showSettingsView('deps');
+  });
+
+  ov.classList.remove('hidden');
 }
 
 /* ============================================================
@@ -221,6 +293,10 @@ async function renderHome() {
     </div>`;
   $('#hero-browse').addEventListener('click', () => $('#rows').scrollIntoView({ behavior: 'smooth' }));
   $('#hero-channel').addEventListener('click', () => {
+    if (document.body.classList.contains('mobile-ui')) {
+      openMobileRepoSheet();
+      return;
+    }
     const dd = $('#repo-picker');
     if (!dd) return;
     dd.classList.add('open');
@@ -448,6 +524,7 @@ function bindCardEvents(root) {
 /* Hover önizleme — gerçek içerikle */
 let pvTimer = null, pvHideTimer = null;
 document.addEventListener('mouseover', (e) => {
+  if (document.body.classList.contains('mobile-ui') || document.body.classList.contains('tv-mode')) return;
   const card = e.target.closest('.card');
   if (card && $('#modal-overlay').classList.contains('hidden') && $('#player').classList.contains('hidden')) {
     clearTimeout(pvTimer);
@@ -1636,11 +1713,39 @@ function bindNavbar() {
       </div></div>`
     : `<div class="notif-item"><div class="ni-body"><span class="ni-t">Depo yok</span><span class="ni-s">İçerik için depo ekle</span></div></div>`;
 
+  // Logo tıklaması: Ana Sayfaya temiz dönüş
+  $('#logo')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeMobileRepoSheet();
+    document.body.classList.remove('mobile-search-open');
+    $('#search-box')?.classList.remove('open');
+    if ($('#search-input')) $('#search-input').value = '';
+    state.typeFilter = null;
+    $$('.nav-link').forEach((x) => x.classList.toggle('active', x.dataset.view === 'home'));
+    $$('#mobile-pills .mob-pill[data-mob-filter]').forEach((p) => p.classList.toggle('active', p.dataset.mobFilter === 'all'));
+    window.scrollTo(0, 0);
+    renderHome();
+  });
+
   // Bana Sürpriz Yap (Navbar)
   $('#surprise-btn')?.addEventListener('click', () => surprisePlay());
 
   // Arama + Tüm Kanallar kapsam seçici
   const sbox = $('#search-box'), sinput = $('#search-input'), sallBtn = $('#search-all-toggle');
+  $('#search-clear')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (sinput.value) {
+      sinput.value = '';
+      sinput.focus();
+      const { rows } = state.homeCache;
+      const sample = [...new Map((rows || []).flatMap((r) => r.items).map((i) => [i.url, i])).values()].slice(0, 24);
+      showGridView('Arama — Önerilen İçerikler', sample, null, 'Aramak istediğin film, dizi veya anime adını yukarıya yaz.');
+      return;
+    }
+    sbox.classList.remove('open');
+    document.body.classList.remove('mobile-search-open');
+    renderHome();
+  });
   $('#search-toggle').addEventListener('click', () => {
     const opening = !sbox.classList.contains('open');
     sbox.classList.toggle('open', opening);
@@ -2451,7 +2556,12 @@ function initPlatformAndDpad() {
         showSettingsView('deps');
         return;
       }
-      $('#repo-picker')?.classList.toggle('open');
+      openMobileRepoSheet();
+    });
+
+    $('#ms-close')?.addEventListener('click', () => closeMobileRepoSheet());
+    $('#mobile-sheet-overlay')?.addEventListener('click', (e) => {
+      if (e.target === $('#mobile-sheet-overlay')) closeMobileRepoSheet();
     });
 
     document.addEventListener('click', (e) => {
@@ -2473,6 +2583,11 @@ function initPlatformAndDpad() {
     const confirmOv = $('#confirm-overlay');
     if (confirmOv && !confirmOv.classList.contains('hidden')) {
       $('#confirm-cancel')?.click();
+      return true;
+    }
+    const msOv = $('#mobile-sheet-overlay');
+    if (msOv && !msOv.classList.contains('hidden')) {
+      closeMobileRepoSheet();
       return true;
     }
     const p = $('#player');

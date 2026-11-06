@@ -6,8 +6,8 @@
 <title>Elderbox</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" defer></script>
 <link rel="icon" type="image/png" href="assets/img/favicon.png">
-<link rel="stylesheet" href="css/style.css?v=29">
-<script>window.__ASSET_V = 29;</script>
+<link rel="stylesheet" href="css/style.css?v=30">
+<script>window.__ASSET_V = 30;</script>
 </head>
 <body>
 
@@ -33,8 +33,11 @@
         <button class="icon-btn" id="search-toggle" title="Ara">
           <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L21 19.5l-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
         </button>
-        <input type="text" id="search-input" placeholder="Başlıklar, kişi, türler" autocomplete="off">
+        <input type="text" id="search-input" placeholder="Film, dizi, anime ara…" autocomplete="off">
         <button class="search-scope-btn" id="search-all-toggle" title="Depodaki tüm kurulu kanallarda ara">Tüm Kanallar</button>
+        <button class="search-clear-btn" id="search-clear" type="button" title="Aramayı kapat">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div class="dropdown" id="notif-dd">
         <button class="icon-btn" id="notif-btn" title="Bildirimler">
@@ -426,6 +429,23 @@
   </div>
 </div>
 
+<!-- MOBİL KANAL & DEPO SEÇİCİ ALT ÇEKMECE (BOTTOM SHEET) -->
+<div id="mobile-sheet-overlay" class="mobile-sheet-overlay hidden">
+  <div id="mobile-sheet" class="mobile-sheet" role="dialog" aria-modal="true" aria-label="Kanal ve Depo Seç">
+    <div class="ms-handle"></div>
+    <div class="ms-head">
+      <div>
+        <div class="ms-title">Kanal ve Depo Seç</div>
+        <div class="ms-sub">İçerikleri gösterilecek aktif kanalı belirleyin</div>
+      </div>
+      <button class="ms-close" id="ms-close" type="button" title="Kapat">
+        <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="ms-body" id="ms-body"></div>
+  </div>
+</div>
+
 <!-- BİLDİRİM TOAST -->
 <div id="toast" class="hidden"></div>
 
@@ -435,8 +455,8 @@
 <div class="win-resize" id="win-resize-se"></div>
 
 <script src="/state.js"></script>
-<script src="js/data.js?v=29"></script>
-<script src="js/cs-bridge.js?v=29"></script>
-<script src="js/app.js?v=29"></script>
+<script src="js/data.js?v=30"></script>
+<script src="js/cs-bridge.js?v=30"></script>
+<script src="js/app.js?v=30"></script>
 </body>
 </html>
